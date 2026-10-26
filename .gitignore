@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# User local config
+omnitoys_config.json
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

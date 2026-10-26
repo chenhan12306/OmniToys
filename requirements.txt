@@ -1,0 +1,6 @@
+# OmniToys Dependencies
+# Note: Core battery and hardware functions have ZERO dependencies (pure ctypes Win32).
+# The dependencies below are for the modern UI window and .exe packaging.
+
+pywebview>=4.4.1
+pyinstaller>=6.0.0

@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniToys - 现代化外设与效率工具箱</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <div class="brand-title">OmniToys</div>
+          <div class="brand-badge">v1.0 Fluent</div>
+        </div>
+      </div>
+
+      <nav class="nav-group">
+        <div class="nav-item active" data-page="dashboard">
+          <span class="nav-icon">🏠</span>
+          <span>概览 / 仪表盘</span>
+        </div>
+        <div class="nav-item" data-page="omni_battery">
+          <span class="nav-icon">🔋</span>
+          <span>外设电量监控</span>
+        </div>
+        <div class="nav-item" data-page="power_rename">
+          <span class="nav-icon">🏷️</span>
+          <span>批量重命名 (PowerRename)</span>
+        </div>
+        <div class="nav-item" data-page="awake">
+          <span class="nav-icon">☕</span>
+          <span>保持清醒 (Awake)</span>
+        </div>
+        <div class="nav-item" data-page="window_pinner">
+          <span class="nav-icon">📌</span>
+          <span>窗口置顶 (On Top)</span>
+        </div>
+        <div class="nav-item" data-page="settings">
+          <span class="nav-icon">⚙️</span>
+          <span>全局设置</span>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+      <!-- 1. Dashboard Page -->
+      <section id="page-dashboard" class="page-view">
+        <div class="page-header">
+          <div class="header-left">
+            <h1>欢迎使用 OmniToys</h1>
+            <p>微软 PowerToys 风格的现代化轻量外设与桌面效率工具箱。按需开启模块，告别臃肿后台驱动。</p>
+          </div>
+        </div>
+
+        <div class="section-title">工具模块概览</div>
+        <div class="dashboard-grid" id="dashboard-cards">
+          <!-- Dynamically populated -->
+        </div>
+
+        <div class="section-title">外设电量速览</div>
+        <div id="dashboard-quick-devices">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- 2. OmniBattery Page -->
+      <section id="page-omni_battery" class="page-view" style="display: none;">
+        <div class="page-header">
+          <div class="header-left">
+            <h1>外设电量监控 (OmniBattery)</h1>
+            <p>直接通过 HID++ 2.0 / Windows 蓝牙属性直连外设读取电池百分比与充电状态。完全替代罗技 G HUB，不修改任何鼠标设置。</p>
+          </div>
+          <div class="switch-container">
+            <span style="font-size: 13px; color: var(--text-secondary);">启用模块</span>
+            <label class="switch">
+              <input type="checkbox" id="toggle-battery" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card-section">
+          <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>当前已连接的外设</span>
+            <button class="btn btn-primary" id="btn-refresh-battery">🔄 立即扫描刷新</button>
+          </div>
+          <div id="device-list-container">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <div class="card-section">
+          <div class="section-title">监控选项</div>
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">⏱️</div>
+              <div class="card-texts">
+                <h3>自动轮询间隔</h3>
+                <p>后台静默探测电量的时间间隔，默认 30 秒（极低无线能耗）</p>
+              </div>
+            </div>
+            <select id="select-battery-interval" class="btn" style="padding: 6px 12px;">
+              <option value="15">15 秒 (高频)</option>
+              <option value="30" selected>30 秒 (推荐)</option>
+              <option value="60">60 秒 (节能)</option>
+            </select>
+          </div>
+
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">🔔</div>
+              <div class="card-texts">
+                <h3>低电量弹窗警报阈值</h3>
+                <p>当鼠标或外设电量低于此数值时弹出 Windows 原生气泡通知</p>
+              </div>
+            </div>
+            <select id="select-battery-alert" class="btn" style="padding: 6px 12px;">
+              <option value="25">25%</option>
+              <option value="20" selected>20% (推荐)</option>
+              <option value="10">10%</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2.5 PowerRename Page -->
+      <section id="page-power_rename" class="page-view" style="display: none;">
+        <div class="page-header">
+          <div class="header-left">
+            <h1>批量重命名 (PowerRename)</h1>
+            <p>微软 PowerToys 原汁原味的高级重命名工具。支持高级正则替换、大小写格式转换、智能自动增量编号与安全撤销机制。</p>
+          </div>
+          <div class="switch-container">
+            <span style="font-size: 13px; color: var(--text-secondary);">启用工具</span>
+            <label class="switch">
+              <input type="checkbox" id="toggle-power-rename" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Directory / File Scanner Card -->
+        <div class="card-section">
+          <div class="fluent-card" style="flex-direction: column; align-items: stretch; gap: 14px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <span style="font-size: 13px; font-weight: 600; width: 85px;">目标文件夹:</span>
+              <input type="text" id="rename-folder-input" class="fluent-input" placeholder="输入或粘贴文件夹完整路径，例如: C:\Users\Downloads\photos">
+              <button class="btn btn-primary" id="btn-scan-files" style="white-space: nowrap;">📂 加载文件</button>
+            </div>
+            <div style="display: flex; gap: 20px; align-items: center; font-size: 12.5px; color: var(--text-secondary);">
+              <label class="checkbox-label">
+                <input type="checkbox" id="rename-recursive"> 包含子文件夹中的文件 (递归扫描)
+              </label>
+              <span id="rename-scanned-count">未加载文件</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rules & Settings Card -->
+        <div class="card-section">
+          <div class="fluent-card" style="flex-direction: column; align-items: stretch; gap: 14px;">
+            <div class="input-row">
+              <span class="input-label">搜索查找:</span>
+              <input type="text" id="rename-search-input" class="fluent-input" placeholder="输入要搜索的文本或正则表达式，例如: IMG_(\d+)">
+            </div>
+            <div class="input-row">
+              <span class="input-label">替换为:</span>
+              <input type="text" id="rename-replace-input" class="fluent-input" placeholder="替换的内容，支持正则分组引用如: Photo_$1">
+            </div>
+
+            <div class="options-grid">
+              <label class="checkbox-label">
+                <input type="checkbox" id="rename-opt-regex"> 🔣 使用正则表达式 (Regex)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="rename-opt-case"> 🔤 区分大小写 (Match Case)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="rename-opt-all" checked> 🔁 替换所有匹配项 (All Occurrences)
+              </label>
+            </div>
+
+            <div class="options-grid" style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 12.5px; color: var(--text-secondary); width: 70px;">应用对象:</span>
+                <select id="rename-opt-apply-to" class="btn" style="flex: 1; padding: 5px 10px;">
+                  <option value="name_only" selected>仅文件名 (保留扩展名)</option>
+                  <option value="ext_only">仅扩展名</option>
+                  <option value="full">文件名和扩展名</option>
+                </select>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 12.5px; color: var(--text-secondary); width: 70px;">大小写转换:</span>
+                <select id="rename-opt-formatting" class="btn" style="flex: 1; padding: 5px 10px;">
+                  <option value="none" selected>保持原样 (无转换)</option>
+                  <option value="lowercase">全部小写 (lowercase)</option>
+                  <option value="uppercase">全部大写 (UPPERCASE)</option>
+                  <option value="title_case">首字母大写 (Title Case)</option>
+                </select>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="rename-opt-enum"> 🔢 自动递增编号
+                </label>
+                <select id="rename-opt-enum-pad" class="btn" style="padding: 4px 8px;">
+                  <option value="1">1, 2...</option>
+                  <option value="2" selected>01, 02...</option>
+                  <option value="3">001, 002...</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Preview & Execution -->
+        <div class="card-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 14px; font-weight: 600;">实时更名预览</div>
+            <div style="display: flex; gap: 10px;">
+              <button class="btn" id="btn-rename-undo" disabled>↩️ 撤销上一步</button>
+              <button class="btn btn-primary" id="btn-rename-apply" disabled>✅ 执行重命名</button>
+            </div>
+          </div>
+
+          <div class="rename-table-container">
+            <table class="rename-table">
+              <thead>
+                <tr>
+                  <th style="width: 40px; text-align: center;">
+                    <input type="checkbox" id="rename-select-all" checked>
+                  </th>
+                  <th>原始文件名称</th>
+                  <th>重命名后新名称</th>
+                  <th style="width: 100px;">状态</th>
+                </tr>
+              </thead>
+              <tbody id="rename-table-body">
+                <tr>
+                  <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 30px;">
+                    请输入文件夹路径并点击“加载文件”，输入规则即可在此查看实时更名效果。
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Awake Page -->
+      <section id="page-awake" class="page-view" style="display: none;">
+        <div class="page-header">
+          <div class="header-left">
+            <h1>保持清醒 (Awake)</h1>
+            <p>基于 Windows SetThreadExecutionState，按需保持计算机和屏幕常亮，无需进入控制面板更改系统电源计划。</p>
+          </div>
+          <div class="switch-container">
+            <span style="font-size: 13px; color: var(--text-secondary);">启用清醒</span>
+            <label class="switch">
+              <input type="checkbox" id="toggle-awake">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card-section">
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">☕</div>
+              <div class="card-texts">
+                <h3>清醒模式</h3>
+                <p>无限期保持常亮，直至手动关闭</p>
+              </div>
+            </div>
+            <span class="tag" id="awake-status-tag">未激活</span>
+          </div>
+
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">🖥️</div>
+              <div class="card-texts">
+                <h3>同时保持显示器开启</h3>
+                <p>阻止显示器黑屏休眠</p>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-awake-screen" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Window Pinner Page -->
+      <section id="page-window_pinner" class="page-view" style="display: none;">
+        <div class="page-header">
+          <div class="header-left">
+            <h1>窗口置顶 (Always on Top)</h1>
+            <p>类似 PowerToys Always on Top，快捷键让任何窗口（计算器、笔记、视频）永远悬浮在顶层。</p>
+          </div>
+          <div class="switch-container">
+            <span style="font-size: 13px; color: var(--text-secondary);">启用置顶</span>
+            <label class="switch">
+              <input type="checkbox" id="toggle-pinner" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card-section">
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">⌨️</div>
+              <div class="card-texts">
+                <h3>全局快捷键</h3>
+                <p>按此热键立即置顶/取消置顶当前激活的前台窗口</p>
+              </div>
+            </div>
+            <span class="btn">Ctrl + Win + T</span>
+          </div>
+
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">📌</div>
+              <div class="card-texts">
+                <h3>立即测试置顶当前窗口</h3>
+                <p>测试将本工具箱窗口置顶</p>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btn-test-pin">置顶测试</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Settings Page -->
+      <section id="page-settings" class="page-view" style="display: none;">
+        <div class="page-header">
+          <div class="header-left">
+            <h1>全局设置</h1>
+            <p>管理 OmniToys 的常规行为、托盘图标与开机启动配置。</p>
+          </div>
+        </div>
+
+        <div class="card-section">
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">🚀</div>
+              <div class="card-texts">
+                <h3>开机时静默自启动</h3>
+                <p>Windows 启动后自动最小化运行在系统托盘，不弹窗打扰</p>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-startup">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">🗕</div>
+              <div class="card-texts">
+                <h3>关闭窗口时最小化到系统托盘</h3>
+                <p>点击窗口右上角关闭按钮时保留后台托盘运行</p>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-close-tray" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">🎨</div>
+              <div class="card-texts">
+                <h3>主题外观</h3>
+                <p>支持 Windows 11 暗黑主题与亚克力微光效果</p>
+              </div>
+            </div>
+            <span class="tag">Dark (深色模式)</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

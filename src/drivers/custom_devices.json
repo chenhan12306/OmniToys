@@ -1,0 +1,39 @@
+[
+  {
+    "name": "ATK / VXE Wireless Mouse (Nordic)",
+    "vid": 14139,
+    "pid": 4630,
+    "vid_hex": "0x373B",
+    "pid_hex": "0x1216",
+    "category": "Mouse",
+    "method": "feature_report",
+    "report_id": 8,
+    "request_hex": "0801000000000000",
+    "battery_byte_offset": 3,
+    "charging_byte_offset": 4
+  },
+  {
+    "name": "DARKRIM SHADOW Headset (Jieli)",
+    "vid": 13908,
+    "pid": 26881,
+    "vid_hex": "0x3654",
+    "pid_hex": "0x6901",
+    "category": "Headset",
+    "method": "feature_report",
+    "report_id": 2,
+    "request_hex": "02000000",
+    "battery_byte_offset": 2,
+    "charging_byte_offset": -1
+  },
+  {
+    "name": "Razer Wireless Mouse (Viper / DeathAdder V3)",
+    "vid": 5426,
+    "pid": 60,
+    "vid_hex": "0x1532",
+    "pid_hex": "0x003C",
+    "category": "Mouse",
+    "method": "razer_protocol",
+    "battery_byte_offset": 9,
+    "charging_byte_offset": 10
+  }
+]
