@@ -104,6 +104,13 @@ class TestOmniBattery(unittest.TestCase):
         del_res = fences_mod.handle_action("delete_fence", {"id": new_id})
         self.assertEqual(del_res["status"], "ok")
 
+    def test_safety_guard(self):
+        from src.core.safety_guard import register_shutdown_handler, execute_emergency_cleanup
+        cleaned = []
+        register_shutdown_handler(lambda: cleaned.append(True))
+        execute_emergency_cleanup()
+        self.assertTrue(len(cleaned) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()

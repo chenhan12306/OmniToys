@@ -12,6 +12,7 @@ import time
 import uuid
 from typing import Dict, Any, List, Optional
 from ..base_module import ToyModule
+from ...core.safety_guard import register_shutdown_handler
 from .fence_window import (
     Win32FenceWindow, WM_PAINT, WM_LBUTTONDOWN, WM_LBUTTONDBLCLK,
     WM_MOUSEMOVE, WM_MOUSELEAVE, WM_NCHITTEST, WM_WINDOWPOSCHANGED,
@@ -37,6 +38,7 @@ class DesktopFencesModule(ToyModule):
         self._wnd_proc_ref = None
         self._is_all_hidden: bool = False
         self.is_windows = sys.platform.startswith("win")
+        register_shutdown_handler(self.stop)
 
     def default_config(self) -> Dict[str, Any]:
         return {

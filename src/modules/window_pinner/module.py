@@ -1,17 +1,19 @@
 """
 PowerToys-style Window Pinner (Always on Top) Module.
-Allows pinning active windows on top of all others.
+Allows pinning active windows on top of all others with safe cleanup on exit.
 """
 
 import sys
 import ctypes
-from typing import Dict, Any
+from typing import Dict, Any, Set
 from ..base_module import ToyModule
+from ...core.safety_guard import register_shutdown_handler
 
 HWND_TOPMOST = -1
 HWND_NOTOPMOST = -2
 SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
+SWP_NOACTIVATE = 0x0010
 WS_EX_TOPMOST = 0x00000008
 GWL_EXSTYLE = -20
 
@@ -24,7 +26,8 @@ class WindowPinnerModule(ToyModule):
             description="一键将任意前台窗口（如计算器、记事本、播放器、参考文档）保持在最顶层显示。",
             icon="pin"
         )
-        self.pinned_windows = []
+        self.pinned_windows: Set[int] = set()
+        register_shutdown_handler(self.unpin_all_safe)
 
     def default_config(self) -> Dict[str, Any]:
         return {
@@ -37,7 +40,21 @@ class WindowPinnerModule(ToyModule):
         pass
 
     def stop(self):
-        pass
+        self.unpin_all_safe()
+
+    def unpin_all_safe(self):
+        """Emergency restoration: restores all pinned windows so none are permanently stuck topmost."""
+        if not sys.platform.startswith("win") or not self.pinned_windows:
+            return
+
+        try:
+            user32 = ctypes.windll.user32
+            for hwnd in list(self.pinned_windows):
+                if user32.IsWindow(hwnd):
+                    user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+            self.pinned_windows.clear()
+        except Exception:
+            pass
 
     def pin_foreground_window(self) -> Dict[str, Any]:
         """Toggles topmost state for the currently focused foreground window."""
@@ -49,7 +66,6 @@ class WindowPinnerModule(ToyModule):
         if not hwnd:
             return {"status": "no_window"}
 
-        # Get window title
         buf = ctypes.create_unicode_buffer(256)
         user32.GetWindowTextW(hwnd, buf, 256)
         title = buf.value or "Untitled Window"
@@ -57,11 +73,16 @@ class WindowPinnerModule(ToyModule):
         ex_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         is_topmost = bool(ex_style & WS_EX_TOPMOST)
 
-        new_flag = HWND_NOTOPMOST if is_topmost else HWND_TOPMOST
-        user32.SetWindowPos(hwnd, new_flag, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+        if is_topmost:
+            user32.SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+            self.pinned_windows.discard(hwnd)
+            state_str = "unpinned"
+        else:
+            user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+            self.pinned_windows.add(hwnd)
+            state_str = "pinned"
 
-        state_str = "unpinned" if is_topmost else "pinned"
-        return {"status": "ok", "hwnd": hwnd, "title": title, "state": state_str}
+        return {"status": "ok", "hwnd": hwnd, "title": title, "state": state_str, "pinned_count": len(self.pinned_windows)}
 
     def get_state(self) -> Dict[str, Any]:
         return {

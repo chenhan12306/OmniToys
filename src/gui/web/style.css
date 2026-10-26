@@ -130,6 +130,19 @@ body {
   width: 20px;
   display: flex;
   justify-content: center;
+  align-items: center;
+}
+
+.fluent-svg-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+}
+
+.dash-svg-icon {
+  width: 26px;
+  height: 26px;
+  display: inline-block;
 }
 
 /* Content Area */

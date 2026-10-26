@@ -1,9 +1,10 @@
 """
-Native Win32 Desktop Fence Window (High-Performance & Low-Resource Edition).
+Native Win32 Desktop Fence Window (High-Performance, Low-Resource & Native Icons Edition).
 Engineered for:
 - 0.0% idle CPU usage via native GetMessageW wait-state pump
 - Instantaneous 144Hz/240Hz buttery smooth dragging via native WM_NCHITTEST (HTCAPTION & HTBOTTOMRIGHT)
-- Persistent GDI font caching (eliminates per-frame GDI allocations and memory leaks)
+- Real Windows Native Shell Icons (SHGetFileInfoW) for exact software logos (Chrome, WeChat, VSCode, .docx, .xlsx)
+- Persistent GDI and HICON caching (eliminates per-frame allocations and memory leaks)
 - TrackMouseEvent (TME_LEAVE) for jitter-free hover states
 - Sub-millisecond double-buffered GDI rendering (< 1.5MB RAM per fence)
 """
@@ -47,6 +48,9 @@ HTCAPTION = 2
 HTBOTTOMRIGHT = 17
 
 TME_LEAVE = 0x00000002
+SHGFI_ICON = 0x000000100
+SHGFI_SMALLICON = 0x000000001
+DI_NORMAL = 0x0003
 
 TITLE_BAR_HEIGHT = 34
 ITEM_HEIGHT = 28
@@ -59,6 +63,16 @@ class TRACKMOUSEEVENT(ctypes.Structure):
         ("dwFlags", wintypes.DWORD),
         ("hwndTrack", wintypes.HWND),
         ("dwHoverTime", wintypes.DWORD),
+    ]
+
+
+class SHFILEINFOW(ctypes.Structure):
+    _fields_ = [
+        ("hIcon", wintypes.HICON),
+        ("iIcon", ctypes.c_int),
+        ("dwAttributes", wintypes.DWORD),
+        ("szDisplayName", wintypes.WCHAR * 260),
+        ("szTypeName", wintypes.WCHAR * 80),
     ]
 
 
@@ -92,6 +106,7 @@ class Win32FenceWindow:
         self.items: List[Dict[str, str]] = []
         self.hovered_item_idx: int = -1
         self._tracking_mouse = False
+        self._icon_cache: Dict[str, wintypes.HICON] = {}
         self.is_windows = sys.platform.startswith("win")
 
         # Cached GDI Resources (reused across all repaints)
@@ -118,6 +133,32 @@ class Win32FenceWindow:
         self._brush_title = self._gdi32.CreateSolidBrush(0x282828)
         self._brush_hover = self._gdi32.CreateSolidBrush(0x383838)
         self._pen_border = self._gdi32.CreatePen(0, 1, 0x404040)
+
+    def _get_item_icon(self, full_path: str) -> Optional[wintypes.HICON]:
+        """Fetches the real Windows native software/file icon using SHGetFileInfoW."""
+        if not self.is_windows:
+            return None
+
+        ext = os.path.splitext(full_path)[1].lower()
+        is_exe_or_lnk = ext in (".exe", ".lnk", ".url", ".appref-ms")
+
+        # For unique executables/shortcuts, cache by full path; for documents (.pdf, .docx), cache by extension
+        cache_key = full_path if is_exe_or_lnk else (ext or "__folder__")
+
+        if cache_key in self._icon_cache:
+            return self._icon_cache[cache_key]
+
+        sfi = SHFILEINFOW()
+        res = self._shell32.SHGetFileInfoW(
+            full_path, 0,
+            ctypes.byref(sfi), ctypes.sizeof(sfi),
+            SHGFI_ICON | SHGFI_SMALLICON
+        )
+        if res and sfi.hIcon:
+            self._icon_cache[cache_key] = sfi.hIcon
+            return sfi.hIcon
+
+        return None
 
     def _load_folder_items(self):
         """Loads directory contents into RAM cache."""
@@ -180,11 +221,7 @@ class Win32FenceWindow:
         self._notify_change()
 
     def handle_nchittest(self, screen_x: int, screen_y: int) -> int:
-        """
-        Native Windows OS Hit-Testing:
-        Returns HTCAPTION for smooth title dragging,
-        Returns HTBOTTOMRIGHT for native zero-lag resize handle.
-        """
+        """Native Windows OS Hit-Testing for smooth dragging and resize handles."""
         rect = wintypes.RECT()
         self._user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
 
@@ -234,7 +271,7 @@ class Win32FenceWindow:
         text_rect = wintypes.RECT(12, 0, w - 12, TITLE_BAR_HEIGHT)
         self._user32.DrawTextW(hdc_mem, title_text, len(title_text), ctypes.byref(text_rect), 0x0004 | 0x0020)
 
-        # 4. Item List (Cached font)
+        # 4. Item List (with real native Windows application/file icons)
         if not self.is_rolled_up:
             self._gdi32.SelectObject(hdc_mem, self._font_item)
             curr_y = TITLE_BAR_HEIGHT + ITEM_PADDING
@@ -249,11 +286,22 @@ class Win32FenceWindow:
                 else:
                     self._gdi32.SetTextColor(hdc_mem, 0xC8C8C8)
 
-                icon_str = "📁 " if item["is_dir"] else "📄 "
-                display_str = f"{icon_str}{item['name']}"
-                inner_rect = wintypes.RECT(14, curr_y, w - 14, curr_y + ITEM_HEIGHT)
-                self._user32.DrawTextW(hdc_mem, display_str, len(display_str), ctypes.byref(inner_rect), 0x0004 | 0x0020)
+                # Fetch real Windows icon
+                hicon = self._get_item_icon(item["full_path"])
+                text_left = 14
+                if hicon:
+                    self._user32.DrawIconEx(hdc_mem, 12, curr_y + 5, hicon, 16, 16, 0, 0, DI_NORMAL)
+                    text_left = 34
+                else:
+                    icon_prefix = "📁 " if item["is_dir"] else "📄 "
+                    item_display = f"{icon_prefix}{item['name']}"
+                    inner_rect = wintypes.RECT(text_left, curr_y, w - 14, curr_y + ITEM_HEIGHT)
+                    self._user32.DrawTextW(hdc_mem, item_display, len(item_display), ctypes.byref(inner_rect), 0x0004 | 0x0020)
+                    curr_y += ITEM_HEIGHT + 2
+                    continue
 
+                inner_rect = wintypes.RECT(text_left, curr_y, w - 14, curr_y + ITEM_HEIGHT)
+                self._user32.DrawTextW(hdc_mem, item["name"], len(item["name"]), ctypes.byref(inner_rect), 0x0004 | 0x0020)
                 curr_y += ITEM_HEIGHT + 2
 
         # 5. Border
@@ -275,7 +323,6 @@ class Win32FenceWindow:
         self._user32.EndPaint(hwnd, ps)
 
     def handle_lbuttondown(self, x: int, y: int):
-        # Item click: launch target file
         if y > TITLE_BAR_HEIGHT and not self.is_rolled_up:
             item_idx = self._get_item_at_y(y)
             if 0 <= item_idx < len(self.items):
@@ -286,7 +333,6 @@ class Win32FenceWindow:
                     print(f"[Fence] Failed to launch {target_path}: {e}")
 
     def handle_mousemove(self, x: int, y: int):
-        # Register TME_LEAVE if not already tracked
         if not self._tracking_mouse:
             tme = TRACKMOUSEEVENT()
             tme.cbSize = ctypes.sizeof(TRACKMOUSEEVENT)
@@ -312,7 +358,6 @@ class Win32FenceWindow:
             self._user32.InvalidateRect(self.hwnd, None, False)
 
     def handle_windowposchanged(self):
-        """Called by OS when drag or resize completes."""
         rect = wintypes.RECT()
         self._user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
         self.x = rect.left
@@ -360,3 +405,8 @@ class Win32FenceWindow:
             if self._brush_title: self._gdi32.DeleteObject(self._brush_title)
             if self._brush_hover: self._gdi32.DeleteObject(self._brush_hover)
             if self._pen_border: self._gdi32.DeleteObject(self._pen_border)
+            # Free cached Shell Icons
+            for ico in self._icon_cache.values():
+                if ico:
+                    self._user32.DestroyIcon(ico)
+            self._icon_cache.clear()

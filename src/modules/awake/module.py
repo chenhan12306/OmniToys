@@ -1,12 +1,14 @@
 """
 PowerToys-style Awake Module.
 Keeps the computer and display awake on demand using SetThreadExecutionState.
+Guarantees clean restoration of system power state on any exit.
 """
 
 import sys
 import ctypes
 from typing import Dict, Any
 from ..base_module import ToyModule
+from ...core.safety_guard import register_shutdown_handler
 
 ES_CONTINUOUS = 0x80000000
 ES_SYSTEM_REQUIRED = 0x00000001
@@ -22,11 +24,12 @@ class AwakeModule(ToyModule):
             icon="coffee"
         )
         self.is_active = False
+        register_shutdown_handler(self.stop)
 
     def default_config(self) -> Dict[str, Any]:
         return {
             "enabled": False,
-            "mode": "indefinite",  # "indefinite" or "passive"
+            "mode": "indefinite",
             "keep_screen_on": True
         }
 
@@ -50,6 +53,7 @@ class AwakeModule(ToyModule):
                     flags |= ES_DISPLAY_REQUIRED
                 kernel32.SetThreadExecutionState(flags)
             else:
+                # Restores normal system sleep schedule
                 kernel32.SetThreadExecutionState(ES_CONTINUOUS)
         except Exception as e:
             print(f"[AwakeModule] Failed to set execution state: {e}")

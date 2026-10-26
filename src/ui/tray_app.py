@@ -14,6 +14,7 @@ import time
 from typing import Optional
 from ..core.device_manager import DeviceManager
 from ..core.device_base import ChargingStatus, ConnectionType
+from ..core.safety_guard import register_shutdown_handler
 
 # Win32 Constants
 WM_USER = 0x0400
@@ -81,6 +82,7 @@ class TrayApplication:
         self.hwnd = None
         self.hicon = None
         self.last_alerted_level = 100
+        register_shutdown_handler(self.shutdown)
 
         if self.is_windows:
             self._user32 = ctypes.windll.user32

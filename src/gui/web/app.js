@@ -56,7 +56,14 @@ function renderDashboard(data) {
   if (!container) return;
   container.innerHTML = '';
 
-  const icons = { battery: '🔋', fences: '🗂️', rename: '🏷️', coffee: '☕', pin: '📌', widgets: '🛠️' };
+  const svgIcons = {
+    battery: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><rect x="2" y="6" width="17" height="12" rx="3" stroke="#28a745" stroke-width="2"/><path d="M21 10v4" stroke="#28a745" stroke-width="2" stroke-linecap="round"/><path d="M10 8l-3 4h4l-2 4" stroke="#00e5ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    fences: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><rect x="3" y="3" width="8" height="8" rx="2" fill="rgba(0,120,212,0.3)" stroke="#0078d4" stroke-width="1.8"/><rect x="13" y="3" width="8" height="8" rx="2" fill="rgba(0,120,212,0.2)" stroke="#0078d4" stroke-width="1.8"/><rect x="3" y="13" width="18" height="8" rx="2" fill="rgba(0,120,212,0.25)" stroke="#0078d4" stroke-width="1.8"/></svg>',
+    rename: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="#a78bfa" stroke-width="1.8"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    coffee: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><path d="M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" stroke="#f59e0b" stroke-width="1.8"/><path d="M6 1v3M10 1v3M14 1v3" stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><path d="M12 17v5M5 7l3 3-4 6 7-2 3 3 2-2-9-9 2-2-2-2-4 4z" stroke="#ec4899" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    widgets: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><circle cx="12" cy="12" r="3" stroke="#94a3b8" stroke-width="1.8"/></svg>'
+  };
 
   data.modules.forEach(mod => {
     const card = document.createElement('div');
@@ -65,7 +72,7 @@ function renderDashboard(data) {
 
     const statusClass = mod.enabled ? 'active' : 'disabled';
     const statusText = mod.enabled ? '已启用' : '已停用';
-    const icon = icons[mod.icon] || '📦';
+    const icon = svgIcons[mod.icon] || '📦';
 
     card.innerHTML = `
       <div class="dash-top">

@@ -14,9 +14,13 @@ from src.core.app_host import AppHost
 from src.gui.window import ModernWindowHost
 from src.ui.cli import run_cli_once, run_cli_watch
 from src.ui.tray_app import TrayApplication
+from src.core.safety_guard import init_safety_guard
 
 
 def main():
+    # Initialize global safety guard for clean exits
+    init_safety_guard()
+
     parser = argparse.ArgumentParser(
         description="OmniToys - Modern PowerToys-style Peripheral & Efficiency Toolbox"
     )
