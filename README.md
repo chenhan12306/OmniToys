@@ -15,6 +15,7 @@
    - **任务栏动态电量数字徽标**：在 Windows 任务栏直接显示当前主鼠标电量数字（如 `78`，绿/黄/红分级变色，充电带 `⚡` 标识）。
 3. **已内置的 PowerToys 风格小工具**：
    - 🔋 **外设电量监控 (OmniBattery)**：替代 G HUB，多设备电量统一看。
+   - 🗂️ **桌面栅栏 (Desktop Fences)**：对标知名桌面整理软件 Stardock Fences，在 Windows 桌面上创建半透明毛玻璃分区容器，支持双击标题栏卷起收纳 (Roll-Up)、文件夹实时传送门与双击桌面空白隐藏。
    - 🏷️ **批量重命名 (PowerRename)**：对标 PowerToys PowerRename，支持高级正则替换、大小写格式转换、自动递增编号、实时表格更名预览与安全一键撤销。
    - ☕ **保持清醒 (Awake)**：对应 PowerToys Awake，长时下载、渲染或挂机时阻止电脑休眠或显示器黑屏。
    - 📌 **窗口置顶 (Always on Top)**：对应 PowerToys Always on Top，快捷键让任何计算器、记事本或视频窗口悬浮在顶层。

@@ -86,6 +86,23 @@ class TestOmniBattery(unittest.TestCase):
         mod_ids = [m["id"] for m in summary["modules"]]
         self.assertIn("power_rename", mod_ids)
         self.assertIn("omni_battery", mod_ids)
+        self.assertIn("desktop_fences", mod_ids)
+
+    def test_desktop_fences_module(self):
+        from src.modules.desktop_fences.module import DesktopFencesModule
+        fences_mod = DesktopFencesModule()
+        fences_mod.init_config()
+        state = fences_mod.get_state()
+        self.assertGreaterEqual(state["fences_count"], 2)
+
+        # Test creating a new fence
+        create_res = fences_mod.handle_action("create_fence", {"title": "游戏快捷方式", "folder_path": "/tmp/games"})
+        self.assertEqual(create_res["status"], "ok")
+        new_id = create_res["fence"]["id"]
+
+        # Test deleting the fence
+        del_res = fences_mod.handle_action("delete_fence", {"id": new_id})
+        self.assertEqual(del_res["status"], "ok")
 
 
 if __name__ == "__main__":

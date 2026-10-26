@@ -47,6 +47,7 @@ async function refreshDashboard() {
   appData = data;
   renderDashboard(data);
   renderBatteryPage(data);
+  renderFencesPage(data);
   renderAwakePage(data);
 }
 
@@ -55,7 +56,7 @@ function renderDashboard(data) {
   if (!container) return;
   container.innerHTML = '';
 
-  const icons = { battery: '🔋', coffee: '☕', pin: '📌', widgets: '🛠️' };
+  const icons = { battery: '🔋', fences: '🗂️', rename: '🏷️', coffee: '☕', pin: '📌', widgets: '🛠️' };
 
   data.modules.forEach(mod => {
     const card = document.createElement('div');
@@ -149,6 +150,71 @@ function renderDeviceCards(devices, container) {
   });
 }
 
+function renderFencesPage(data) {
+  const mod = data.modules.find(m => m.id === 'desktop_fences');
+  if (!mod) return;
+
+  const toggle = document.getElementById('toggle-fences');
+  if (toggle) toggle.checked = mod.enabled;
+
+  const container = document.getElementById('fences-list-container');
+  if (!container) return;
+
+  const fences = mod.state?.fences || [];
+  if (fences.length === 0) {
+    container.innerHTML = `
+      <div class="fluent-card" style="justify-content: center; color: var(--text-secondary); padding: 30px;">
+        桌面暂无活跃栅栏。点击上方“新建桌面栅栏”即可在桌面创建第一个分区！
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  fences.forEach(fence => {
+    const card = document.createElement('div');
+    card.className = 'fluent-card';
+    card.style.marginBottom = '8px';
+
+    const rollText = fence.is_rolled_up ? '▼ 展开' : '▲ 折叠卷起';
+
+    card.innerHTML = `
+      <div class="card-info">
+        <div class="card-icon">🗂️</div>
+        <div class="card-texts">
+          <h3>${escapeHtml(fence.title)} (${fence.item_count || 0} 个桌面文件)</h3>
+          <p>位置: (${fence.x}, ${fence.y}) | 大小: ${fence.width}x${fence.height} | 路径: ${escapeHtml(fence.folder_path)}</p>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button class="btn btn-rollup-fence" data-id="${fence.id}">${rollText}</button>
+        <button class="btn btn-del-fence" data-id="${fence.id}" style="color: var(--accent-red)">删除</button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+
+  // Roll-up button click
+  container.querySelectorAll('.btn-rollup-fence').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      await apiCall('/api/action', 'POST', { module_id: 'desktop_fences', action: 'toggle_rollup', payload: { id } });
+      await refreshDashboard();
+    };
+  });
+
+  // Delete button click
+  container.querySelectorAll('.btn-del-fence').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      if (confirm('确定要从桌面移除该栅栏吗？(原文件不会被删除)')) {
+        await apiCall('/api/action', 'POST', { module_id: 'desktop_fences', action: 'delete_fence', payload: { id } });
+        await refreshDashboard();
+      }
+    };
+  });
+}
+
 function renderAwakePage(data) {
   const mod = data.modules.find(m => m.id === 'awake');
   if (!mod) return;
@@ -182,6 +248,50 @@ document.getElementById('btn-refresh-battery')?.addEventListener('click', async 
 document.getElementById('toggle-battery')?.addEventListener('change', async (e) => {
   await apiCall('/api/toggle_module', 'POST', { module_id: 'omni_battery', enabled: e.target.checked });
   await refreshDashboard();
+});
+
+// Fences Event Listeners
+document.getElementById('toggle-fences')?.addEventListener('change', async (e) => {
+  await apiCall('/api/toggle_module', 'POST', { module_id: 'desktop_fences', enabled: e.target.checked });
+  await refreshDashboard();
+});
+
+document.getElementById('btn-open-create-fence')?.addEventListener('click', () => {
+  const card = document.getElementById('create-fence-card');
+  if (card) card.style.display = 'block';
+});
+
+document.getElementById('btn-cancel-create-fence')?.addEventListener('click', () => {
+  const card = document.getElementById('create-fence-card');
+  if (card) card.style.display = 'none';
+});
+
+document.getElementById('btn-confirm-create-fence')?.addEventListener('click', async () => {
+  const title = document.getElementById('new-fence-title').value.trim();
+  if (!title) {
+    alert('请输入栅栏名称！');
+    return;
+  }
+  const folder = document.getElementById('new-fence-folder').value.trim();
+  await apiCall('/api/action', 'POST', {
+    module_id: 'desktop_fences',
+    action: 'create_fence',
+    payload: { title, folder_path: folder }
+  });
+  document.getElementById('create-fence-card').style.display = 'none';
+  document.getElementById('new-fence-title').value = '';
+  document.getElementById('new-fence-folder').value = '';
+  await refreshDashboard();
+});
+
+document.getElementById('btn-toggle-all-fences')?.addEventListener('click', async () => {
+  const res = await apiCall('/api/action', 'POST', {
+    module_id: 'desktop_fences',
+    action: 'toggle_all_visibility',
+    payload: {}
+  });
+  const isHidden = res?.is_all_hidden;
+  document.getElementById('btn-toggle-all-fences').textContent = isHidden ? '👁️ 恢复显示全部栅栏' : '👁️ 临时隐藏全部栅栏';
 });
 
 document.getElementById('toggle-awake')?.addEventListener('change', async (e) => {

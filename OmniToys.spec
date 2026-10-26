@@ -25,6 +25,8 @@ a = Analysis(
         'src.core.config_manager',
         'src.modules.base_module',
         'src.modules.omni_battery.module',
+        'src.modules.desktop_fences.module',
+        'src.modules.desktop_fences.fence_window',
         'src.modules.power_rename.module',
         'src.modules.awake.module',
         'src.modules.window_pinner.module',

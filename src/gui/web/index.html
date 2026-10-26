@@ -27,6 +27,10 @@
           <span class="nav-icon">🔋</span>
           <span>外设电量监控</span>
         </div>
+        <div class="nav-item" data-page="desktop_fences">
+          <span class="nav-icon">🗂️</span>
+          <span>桌面栅栏 (Desktop Fences)</span>
+        </div>
         <div class="nav-item" data-page="power_rename">
           <span class="nav-icon">🏷️</span>
           <span>批量重命名 (PowerRename)</span>
@@ -124,6 +128,93 @@
               <option value="20" selected>20% (推荐)</option>
               <option value="10">10%</option>
             </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2.2 Desktop Fences Page -->
+      <section id="page-desktop_fences" class="page-view" style="display: none;">
+        <div class="page-header">
+          <div class="header-left">
+            <h1>桌面栅栏 (Desktop Fences)</h1>
+            <p>微软 Windows 桌面图标与文件分区整理利器（1:1 复刻 Stardock Fences）。自动在桌面上生成半透明磨砂玻璃容器，支持双击折叠卷起、文件夹传送门与一键隐藏桌面。</p>
+          </div>
+          <div class="switch-container">
+            <span style="font-size: 13px; color: var(--text-secondary);">启用栅栏</span>
+            <label class="switch">
+              <input type="checkbox" id="toggle-fences" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Fences Global Controls -->
+        <div class="card-section">
+          <div class="fluent-card" style="justify-content: space-between;">
+            <div class="card-info">
+              <div class="card-icon">🗂️</div>
+              <div class="card-texts">
+                <h3>栅栏桌面容器管理</h3>
+                <p>每个栅栏对应桌面上的一个可拖拽毛玻璃窗口，双击标题栏可卷起折叠</p>
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button class="btn" id="btn-toggle-all-fences">👁️ 显示/隐藏全部栅栏</button>
+              <button class="btn btn-primary" id="btn-open-create-fence">➕ 新建桌面栅栏</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Create Modal/Card (Hidden by default) -->
+        <div class="card-section" id="create-fence-card" style="display: none;">
+          <div class="fluent-card" style="flex-direction: column; align-items: stretch; gap: 12px; border: 1px solid var(--accent-color);">
+            <div style="font-size: 14px; font-weight: 600;">新建桌面栅栏容器</div>
+            <div class="input-row">
+              <span class="input-label">栅栏标题:</span>
+              <input type="text" id="new-fence-title" class="fluent-input" placeholder="例如: 常用软件 / 工作表格 / 待办便签">
+            </div>
+            <div class="input-row">
+              <span class="input-label">映射文件夹:</span>
+              <input type="text" id="new-fence-folder" class="fluent-input" placeholder="文件夹绝对路径，不填则默认自动在桌面创建专属目录">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+              <button class="btn" id="btn-cancel-create-fence">取消</button>
+              <button class="btn btn-primary" id="btn-confirm-create-fence">确认创建并显示在桌面</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Fences List -->
+        <div class="card-section">
+          <div class="section-title">当前桌面活跃栅栏</div>
+          <div id="fences-list-container">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Features & Shortcuts Info -->
+        <div class="card-section">
+          <div class="section-title">操作手势与快捷技巧 (Stardock Fences 专属)</div>
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">👆</div>
+              <div class="card-texts">
+                <h3>双击标题栏卷起折叠 (Roll-Up)</h3>
+                <p>双击任意栅栏的顶部标题栏，栅栏会自动卷起收缩为一条细长标签；再次双击展开完整内容。</p>
+              </div>
+            </div>
+            <span class="tag">双击标题</span>
+          </div>
+
+          <div class="fluent-card">
+            <div class="card-info">
+              <div class="card-icon">🖱️</div>
+              <div class="card-texts">
+                <h3>自由拖拽与边框拉伸</h3>
+                <p>鼠标按住标题栏可在桌面上自由拖动停靠；按住右下角可任意调整栅栏的宽度与高度。</p>
+              </div>
+            </div>
+            <span class="tag">自由停靠</span>
           </div>
         </div>
       </section>

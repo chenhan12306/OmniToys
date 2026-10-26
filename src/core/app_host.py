@@ -10,6 +10,7 @@ from ..modules.omni_battery.module import OmniBatteryModule
 from ..modules.awake.module import AwakeModule
 from ..modules.window_pinner.module import WindowPinnerModule
 from ..modules.power_rename.module import PowerRenameModule
+from ..modules.desktop_fences.module import DesktopFencesModule
 
 
 class AppHost:
@@ -24,6 +25,7 @@ class AppHost:
     def _register_default_modules(self):
         default_list = [
             OmniBatteryModule(enable_mock=self.enable_mock),
+            DesktopFencesModule(),
             PowerRenameModule(),
             AwakeModule(),
             WindowPinnerModule()
