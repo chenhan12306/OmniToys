@@ -76,8 +76,11 @@ class ModernWindowHost:
         self.port = find_free_port()
         self.server: Optional[HTTPServer] = None
         self.server_thread: Optional[threading.Thread] = None
+        self.webview_window = None
 
     def start_server(self):
+        if self.server:
+            return
         def handler_factory(*args, **kwargs):
             return AppRequestHandler(*args, host_ref=self.host, **kwargs)
 
@@ -89,11 +92,10 @@ class ModernWindowHost:
         self.start_server()
         url = f"http://127.0.0.1:{self.port}/index.html"
 
-        # Check for pywebview
         if not use_browser:
             try:
                 import webview
-                webview.create_window(
+                self.webview_window = webview.create_window(
                     title="OmniToys - 外设与桌面效率工具箱",
                     url=url,
                     width=1040,
@@ -101,11 +103,42 @@ class ModernWindowHost:
                     min_size=(800, 600),
                     text_select=False
                 )
+
+                def on_closing():
+                    # Minimize to tray instead of quitting when user clicks [X]
+                    try:
+                        self.webview_window.hide()
+                        return False
+                    except Exception:
+                        return True
+
+                self.webview_window.events.closing += on_closing
                 webview.start()
                 return
-            except ImportError:
+            except (ImportError, Exception):
                 pass
 
         # Fallback to system browser
         print(f"[OmniToys] Opening Dashboard at: {url}")
         webbrowser.open(url)
+
+    def show_or_focus(self):
+        """Restores or opens dashboard window on demand."""
+        self.start_server()
+        url = f"http://127.0.0.1:{self.port}/index.html"
+        if self.webview_window:
+            try:
+                self.webview_window.show()
+                self.webview_window.restore()
+                return
+            except Exception:
+                pass
+        webbrowser.open(url)
+
+    def destroy(self):
+        """Forces true window destruction upon full application exit."""
+        if self.webview_window:
+            try:
+                self.webview_window.destroy()
+            except Exception:
+                pass

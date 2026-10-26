@@ -10,6 +10,7 @@ Modern PowerToys-like Toolbox for Windows:
 
 import sys
 import argparse
+import threading
 from src.core.app_host import AppHost
 from src.gui.window import ModernWindowHost
 from src.ui.cli import run_cli_once, run_cli_watch
@@ -30,7 +31,7 @@ def main():
     )
     parser.add_argument(
         "--tray", action="store_true",
-        help="Run in background system tray mode only"
+        help="Run silently in background system tray mode only (no initial GUI popup)"
     )
     parser.add_argument(
         "--once", action="store_true",
@@ -67,16 +68,49 @@ def main():
             run_cli_watch(battery_mod.device_manager)
         return
 
+    window = ModernWindowHost(host)
+    battery_mod = host.modules.get("omni_battery")
+    tray_app = None
+    tray_thread = None
+
+    if battery_mod:
+        def on_open_gui():
+            window.show_or_focus()
+
+        def on_exit():
+            window.destroy()
+            host.stop_all()
+            sys.exit(0)
+
+        tray_app = TrayApplication(
+            battery_mod.device_manager,
+            on_open_gui=on_open_gui,
+            on_exit=on_exit
+        )
+
+        if sys.platform.startswith("win"):
+            # Resident tray application running in dedicated message loop thread
+            # Non-daemon ensures tray stays alive even if GUI window is closed/hidden
+            tray_thread = threading.Thread(
+                target=tray_app.run, daemon=False, name="OmniToysTrayThread"
+            )
+            tray_thread.start()
+        elif args.tray:
+            # Fallback on non-windows CLI if explicit --tray requested
+            tray_app.run()
+            return
+
     if args.tray:
-        # Background tray mode
-        battery_mod = host.modules.get("omni_battery")
-        if battery_mod:
-            app = TrayApplication(battery_mod.device_manager)
-            app.run()
+        print("[OmniToys] Running resident in system tray. Double-click tray badge to open GUI.")
+        if tray_thread:
+            try:
+                tray_thread.join()
+            except KeyboardInterrupt:
+                host.stop_all()
         return
 
-    # Default: Modern Fluent UI Dashboard
-    window = ModernWindowHost(host)
+    # Default: Show Modern Fluent UI Dashboard
+    # Tray icon is already resident in taskbar notification area
     window.show()
 
 

@@ -1,17 +1,18 @@
 """
 Zero-dependency Pure ctypes Windows System Tray Application.
 Uses user32.dll, gdi32.dll, and shell32.dll to:
-1. Render a dynamic taskbar tray icon displaying the exact battery percentage number (e.g., '78').
-2. Show a Windows native right-click popup menu with all peripheral statuses.
-3. Emit Windows native balloon/toast notifications for low battery warnings.
-4. Run background non-blocking timers with near-zero CPU and memory usage (< 15MB).
+1. Render a permanent dynamic taskbar tray icon displaying the exact battery percentage number (e.g., '78').
+2. Show a Windows native right-click popup menu with all peripheral statuses & Open Dashboard action.
+3. Support double-click on tray icon to open/restore the main dashboard.
+4. Emit Windows native balloon/toast notifications for low battery warnings.
+5. Run background non-blocking timers with near-zero CPU and memory usage (< 12MB).
 """
 
 import sys
 import ctypes
 from ctypes import wintypes
 import time
-from typing import Optional
+from typing import Optional, Callable
 from ..core.device_manager import DeviceManager
 from ..core.device_base import ChargingStatus, ConnectionType
 from ..core.safety_guard import register_shutdown_handler
@@ -22,6 +23,7 @@ WM_TRAYICON = WM_USER + 20
 WM_COMMAND = 0x0111
 WM_RBUTTONUP = 0x0205
 WM_LBUTTONDBLCLK = 0x0203
+WM_LBUTTONUP = 0x0202
 WM_TIMER = 0x0113
 WM_DESTROY = 0x0002
 
@@ -42,8 +44,10 @@ MF_SEPARATOR = 0x00000800
 MF_GRAYED = 0x00000001
 TPM_RIGHTBUTTON = 0x0002
 
+ID_MENU_SHOW_GUI = 1000
 ID_MENU_REFRESH = 1001
 ID_MENU_EXIT = 1002
+BLACKNESS = 0x00000042
 
 
 class NOTIFYICONDATAW(ctypes.Structure):
@@ -75,13 +79,23 @@ class ICONINFO(ctypes.Structure):
 
 
 class TrayApplication:
-    def __init__(self, manager: DeviceManager, poll_interval_sec: int = 30):
+    def __init__(
+        self,
+        manager: DeviceManager,
+        poll_interval_sec: int = 30,
+        on_open_gui: Optional[Callable[[], None]] = None,
+        on_exit: Optional[Callable[[], None]] = None
+    ):
         self.manager = manager
         self.poll_interval_sec = poll_interval_sec
+        self.on_open_gui = on_open_gui
+        self.on_exit = on_exit
         self.is_windows = sys.platform.startswith("win")
         self.hwnd = None
         self.hicon = None
         self.last_alerted_level = 100
+        self.wm_taskbar_created = 0
+        self._wnd_proc_ref = None
         register_shutdown_handler(self.shutdown)
 
         if self.is_windows:
@@ -89,40 +103,55 @@ class TrayApplication:
             self._gdi32 = ctypes.windll.gdi32
             self._shell32 = ctypes.windll.shell32
             self._kernel32 = ctypes.windll.kernel32
+            # Register TaskbarCreated message so icon automatically restores if Explorer.exe restarts
+            self.wm_taskbar_created = self._user32.RegisterWindowMessageW("TaskbarCreated")
 
     def create_dynamic_number_icon(self, number: int, is_charging: bool = False) -> wintypes.HICON:
-        """Draws a 16x16 or 32x32 bitmap containing the battery number and returns an HICON."""
+        """
+        Draws a crisp high-contrast taskbar badge displaying the live battery percentage.
+        Compatible with both Windows 10 & 11 Dark and Light taskbar modes.
+        """
         width, height = 32, 32
         hdc_screen = self._user32.GetDC(0)
         hdc_mem = self._gdi32.CreateCompatibleDC(hdc_screen)
 
-        # Create 32-bit color bitmap
+        # 32-bit color DDB
         hbm_color = self._gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
-        hbm_mask = self._gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
+        # 1-bit monochrome mask (standard for Win32 CreateIconIndirect)
+        hbm_mask = self._gdi32.CreateBitmap(width, height, 1, 1, None)
+
+        # Clear mask to opaque
+        hdc_mask = self._gdi32.CreateCompatibleDC(0)
+        old_mask_bm = self._gdi32.SelectObject(hdc_mask, hbm_mask)
+        self._gdi32.PatBlt(hdc_mask, 0, 0, width, height, BLACKNESS)
+        self._gdi32.SelectObject(hdc_mask, old_mask_bm)
+        self._gdi32.DeleteDC(hdc_mask)
 
         old_bm = self._gdi32.SelectObject(hdc_mem, hbm_color)
 
-        # Background fill (Dark translucent slate)
-        brush = self._gdi32.CreateSolidBrush(0x1E1E1E)
+        # Background Fill (Sleek dark translucent pill)
+        brush = self._gdi32.CreateSolidBrush(0x181818)
         rect = wintypes.RECT(0, 0, width, height)
         self._user32.FillRect(hdc_mem, ctypes.byref(rect), brush)
         self._gdi32.DeleteObject(brush)
 
-        # Draw battery level text
-        # Color coding: Green for >40%, Yellow for 20-40%, Red for <20%, Cyan for charging
+        # High-contrast color coding (BGR format in Win32 GDI):
+        # Charging: Bright Cyan (#00E5FF -> 0xFFE500 BGR)
+        # >= 45%: Vivid Green (#00E676 -> 0x76E600 BGR)
+        # 20-44%: Vibrant Amber (#FFD600 -> 0x00D6FF BGR)
+        # < 20%: Warning Red (#FF1744 -> 0x4417FF BGR)
         if is_charging:
-            color = 0x00E5FF  # Bright Cyan
-        elif number >= 40:
-            color = 0x33FF66  # Vibrant Green
+            color = 0xFFE500
+        elif number >= 45:
+            color = 0x76E600
         elif number >= 20:
-            color = 0x00D7FF  # Amber / Yellow
+            color = 0x00D6FF
         else:
-            color = 0x3333FF  # Bright Red (BGR format in Win32 GDI)
+            color = 0x4417FF
 
         self._gdi32.SetTextColor(hdc_mem, color)
-        self._gdi32.SetBkMode(hdc_mem, 1)  # TRANSPARENT = 1
+        self._gdi32.SetBkMode(hdc_mem, 1)  # TRANSPARENT
 
-        # Create crisp bold font
         font_height = 20 if number < 100 else 16
         hfont = self._gdi32.CreateFontW(
             font_height, 0, 0, 0, 800, 0, 0, 0, 1, 0, 0, 2, 0, "Segoe UI"
@@ -141,14 +170,21 @@ class TrayApplication:
             0x0001 | 0x0004 | 0x0020  # DT_CENTER | DT_VCENTER | DT_SINGLELINE
         )
 
-        # Cleanup GDI handles
+        # Small 2px battery indicator accent at bottom
+        accent_brush = self._gdi32.CreateSolidBrush(color)
+        fill_w = max(4, int(width * max(0, min(100, number)) / 100.0))
+        bottom_bar = wintypes.RECT(2, height - 3, fill_w, height - 1)
+        self._user32.FillRect(hdc_mem, ctypes.byref(bottom_bar), accent_brush)
+        self._gdi32.DeleteObject(accent_brush)
+
+        # Cleanup GDI
         self._gdi32.SelectObject(hdc_mem, old_font)
         self._gdi32.DeleteObject(hfont)
         self._gdi32.SelectObject(hdc_mem, old_bm)
         self._gdi32.DeleteDC(hdc_mem)
         self._user32.ReleaseDC(0, hdc_screen)
 
-        # Generate Icon
+        # Generate HICON
         icon_info = ICONINFO()
         icon_info.fIcon = True
         icon_info.hbmMask = hbm_mask
@@ -167,25 +203,38 @@ class TrayApplication:
             run_cli_watch(self.manager, interval=self.poll_interval_sec)
             return
 
-        # Define Window Procedure
         WNDPROC = ctypes.WINFUNCTYPE(
             ctypes.c_long, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
         )
 
         def wnd_proc(hwnd, msg, wparam, lparam):
+            if self.wm_taskbar_created and msg == self.wm_taskbar_created:
+                # Explorer restarted; re-add tray icon immediately
+                self.refresh()
+                return 0
             if msg == WM_TRAYICON:
-                if lparam == WM_RBUTTONUP or lparam == WM_LBUTTONDBLCLK:
+                if lparam == WM_RBUTTONUP:
                     self._show_context_menu()
+                elif lparam == WM_LBUTTONDBLCLK:
+                    if self.on_open_gui:
+                        self.on_open_gui()
                 return 0
             elif msg == WM_TIMER:
                 self.refresh()
                 return 0
             elif msg == WM_COMMAND:
                 cmd_id = wparam & 0xFFFF
-                if cmd_id == ID_MENU_REFRESH:
+                if cmd_id == ID_MENU_SHOW_GUI:
+                    if self.on_open_gui:
+                        self.on_open_gui()
+                elif cmd_id == ID_MENU_REFRESH:
                     self.refresh()
                 elif cmd_id == ID_MENU_EXIT:
                     self.shutdown()
+                    if self.on_exit:
+                        self.on_exit()
+                    else:
+                        sys.exit(0)
                 return 0
             elif msg == WM_DESTROY:
                 self._user32.PostQuitMessage(0)
@@ -194,7 +243,6 @@ class TrayApplication:
 
         self._wnd_proc_ref = WNDPROC(wnd_proc)
 
-        # Register Window Class
         class WNDCLASSW(ctypes.Structure):
             _fields_ = [
                 ("style", wintypes.UINT),
@@ -219,13 +267,12 @@ class TrayApplication:
             0, 0, 0, 0, 0, 0, 0, 0, None
         )
 
-        # Initial Scan
+        # Initial Scan & render
         self.refresh()
 
-        # Setup background polling timer (non-blocking native Windows timer)
+        # Non-blocking background timer
         self._user32.SetTimer(self.hwnd, 1, self.poll_interval_sec * 1000, None)
 
-        # Run Win32 Message Loop
         msg = wintypes.MSG()
         while self._user32.GetMessageW(ctypes.byref(msg), 0, 0, 0) != 0:
             self._user32.TranslateMessage(ctypes.byref(msg))
@@ -238,14 +285,13 @@ class TrayApplication:
         pct = primary_mouse.battery.percentage if primary_mouse else -1
         is_charging = (primary_mouse.battery.is_charging == ChargingStatus.CHARGING) if primary_mouse else False
 
-        # Destroy old icon if exists
         if self.hicon:
             self._user32.DestroyIcon(self.hicon)
 
         self.hicon = self.create_dynamic_number_icon(pct, is_charging=is_charging)
 
         # Construct tooltip
-        lines = ["OmniBattery Monitor:"]
+        lines = ["OmniToys 外设电量:"]
         for d in devices:
             chg = " (⚡)" if d.battery.is_charging == ChargingStatus.CHARGING else ""
             lines.append(f"{d.name}: {d.battery.percentage}%{chg}")
@@ -263,38 +309,41 @@ class TrayApplication:
         # Low battery alert (below 20% and discharging)
         if primary_mouse and pct <= 20 and not is_charging and pct < self.last_alerted_level:
             nid.uFlags |= NIF_INFO
-            nid.szInfo = f"Low Battery: {primary_mouse.name} is at {pct}%. Please recharge."
-            nid.szInfoTitle = "OmniBattery Alert"
+            nid.szInfo = f"鼠标电量较低 ({pct}%)，建议连接充电线。"
+            nid.szInfoTitle = "OmniToys 电量警报"
             nid.dwInfoFlags = NIIF_WARNING
             self.last_alerted_level = pct
         elif is_charging:
             self.last_alerted_level = 100
 
         self._shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
-        # If modify fails (first time), call ADD
         self._shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid))
 
     def _show_context_menu(self):
         hmenu = self._user32.CreatePopupMenu()
 
+        # Open Dashboard action (Default bold item)
+        self._user32.AppendMenuW(hmenu, MF_STRING, ID_MENU_SHOW_GUI, "🖥️ 打开控制中心 (Open Dashboard)")
+        self._user32.SetMenuDefaultItem(hmenu, ID_MENU_SHOW_GUI, 0)
+        self._user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+
         # Header item (non-clickable info)
-        self._user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, "── Connected Devices ──")
+        self._user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, "── 当前连接的外设 ──")
 
         devices = list(self.manager.devices.values())
         if not devices:
-            self._user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, "No Peripherals Detected")
+            self._user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, "未检测到活跃外设")
         else:
             for i, d in enumerate(devices):
                 chg = " ⚡" if d.battery.is_charging == ChargingStatus.CHARGING else ""
-                val = f"{d.battery.percentage}%{chg}" if d.battery.is_valid else "Unknown"
+                val = f"{d.battery.percentage}%{chg}" if d.battery.is_valid else "未知"
                 line = f"{d.name}: {val}"
                 self._user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, line)
 
         self._user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-        self._user32.AppendMenuW(hmenu, MF_STRING, ID_MENU_REFRESH, "🔄 Refresh Now")
-        self._user32.AppendMenuW(hmenu, MF_STRING, ID_MENU_EXIT, "❌ Exit")
+        self._user32.AppendMenuW(hmenu, MF_STRING, ID_MENU_REFRESH, "🔄 立即刷新")
+        self._user32.AppendMenuW(hmenu, MF_STRING, ID_MENU_EXIT, "❌ 退出程序")
 
-        # Get cursor pos
         pt = wintypes.POINT()
         self._user32.GetCursorPos(ctypes.byref(pt))
         self._user32.SetForegroundWindow(self.hwnd)
@@ -302,9 +351,10 @@ class TrayApplication:
         self._user32.DestroyMenu(hmenu)
 
     def shutdown(self):
-        nid = NOTIFYICONDATAW()
-        nid.cbSize = ctypes.sizeof(NOTIFYICONDATAW)
-        nid.hWnd = self.hwnd
-        nid.uID = 1
-        self._shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(nid))
-        self._user32.PostQuitMessage(0)
+        if self.hwnd and self.is_windows:
+            nid = NOTIFYICONDATAW()
+            nid.cbSize = ctypes.sizeof(NOTIFYICONDATAW)
+            nid.hWnd = self.hwnd
+            nid.uID = 1
+            self._shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(nid))
+            self._user32.PostQuitMessage(0)
