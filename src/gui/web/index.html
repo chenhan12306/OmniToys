@@ -96,6 +96,15 @@
           <div id="device-list-container">
             <!-- Dynamically populated -->
           </div>
+          <div style="margin-top: 10px; text-align: right;">
+            <button class="btn" id="btn-diagnose-usb" style="font-size: 12px;">🔍 找不到设备？点击排查显示器 HUB / USB 外设</button>
+          </div>
+          <div id="usb-diag-container" style="display: none; margin-top: 10px;">
+            <div class="fluent-card" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <div style="font-size: 13px; font-weight: 600; color: var(--accent-cyan);">显示器 HUB / USB 拓扑检测结果:</div>
+              <div id="usb-diag-content" style="max-height: 220px; overflow-y: auto; font-size: 12px; font-family: monospace;"></div>
+            </div>
+          </div>
         </div>
 
         <div class="card-section">

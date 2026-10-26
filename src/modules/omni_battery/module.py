@@ -87,6 +87,26 @@ class OmniBatteryModule(ToyModule):
         if action == "refresh":
             self._scan_once()
             return {"status": "ok", "state": self.get_state()}
+        elif action == "diagnose_usb":
+            # Live diagnostic scanner for Monitor Hubs / KVMs / USB Ports
+            all_eps = self.device_manager.raw_hid.enumerate_devices()
+            diag_list = []
+            seen_devs = set()
+            for ep in all_eps:
+                key = (ep.vid, ep.pid)
+                if key in seen_devs:
+                    continue
+                seen_devs.add(key)
+                diag_list.append({
+                    "vid": ep.vid,
+                    "pid": ep.pid,
+                    "vid_hex": f"0x{ep.vid:04X}",
+                    "pid_hex": f"0x{ep.pid:04X}",
+                    "name": ep.product_name or "Generic HID Device",
+                    "usage_page": f"0x{ep.usage_page:04X}",
+                    "path_snippet": ep.path[:50] + "..." if len(ep.path) > 50 else ep.path
+                })
+            return {"status": "ok", "diagnostics": diag_list}
         elif action == "update_settings":
             for k, v in payload.items():
                 self.config[k] = v

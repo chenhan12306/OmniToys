@@ -1,6 +1,6 @@
 [
   {
-    "name": "ATK / VXE Wireless Mouse (Nordic)",
+    "name": "ATK / VXE Wireless Mouse (Nordic 4K/8K)",
     "vid": 14139,
     "pid": 4630,
     "vid_hex": "0x373B",
@@ -11,6 +11,43 @@
     "request_hex": "0801000000000000",
     "battery_byte_offset": 3,
     "charging_byte_offset": 4
+  },
+  {
+    "name": "VGN Dragonfly F1 / MOBA Wireless Mouse",
+    "vid": 13652,
+    "pid": 62721,
+    "vid_hex": "0x3554",
+    "pid_hex": "0xF501",
+    "category": "Mouse",
+    "method": "feature_report",
+    "report_id": 8,
+    "request_hex": "0801000000000000",
+    "battery_byte_offset": 3,
+    "charging_byte_offset": 4
+  },
+  {
+    "name": "Darmoshark M3 / M3s Wireless Mouse",
+    "vid": 13511,
+    "pid": 6,
+    "vid_hex": "0x34C7",
+    "pid_hex": "0x0006",
+    "category": "Mouse",
+    "method": "feature_report",
+    "report_id": 4,
+    "request_hex": "04010000",
+    "battery_byte_offset": 2,
+    "charging_byte_offset": 3
+  },
+  {
+    "name": "Razer Wireless Mouse (Hyperspeed 2.4G)",
+    "vid": 5426,
+    "pid": 60,
+    "vid_hex": "0x1532",
+    "pid_hex": "0x003C",
+    "category": "Mouse",
+    "method": "razer_protocol",
+    "battery_byte_offset": 9,
+    "charging_byte_offset": 10
   },
   {
     "name": "DARKRIM SHADOW Headset (Jieli)",
@@ -24,16 +61,5 @@
     "request_hex": "02000000",
     "battery_byte_offset": 2,
     "charging_byte_offset": -1
-  },
-  {
-    "name": "Razer Wireless Mouse (Viper / DeathAdder V3)",
-    "vid": 5426,
-    "pid": 60,
-    "vid_hex": "0x1532",
-    "pid_hex": "0x003C",
-    "category": "Mouse",
-    "method": "razer_protocol",
-    "battery_byte_offset": 9,
-    "charging_byte_offset": 10
   }
 ]

@@ -1,7 +1,10 @@
 """
-Logitech HID++ 1.0 / 2.0+ Driver (Radio-Friendly & Low-Resource Edition).
-Optimized specifically for ultra-low wireless power consumption, near-zero CPU usage,
-and instant cached reads without waking the mouse RF chip repeatedly.
+Logitech HID++ 1.0 / 2.0+ Driver (Hub-Resilient & Radio-Friendly Edition).
+Optimized specifically for:
+- Direct Motherboard USB Ports & Monitor USB Hubs / KVM Switches
+- Dual transport fallback (Interrupt & Control pipes via HidD_SetOutputReport/HidD_GetInputReport)
+- Dynamic slot discovery (slots 1..4 and 0xFF)
+- Fast-path single-packet battery reads with zero mouse radio wakeups
 """
 
 import time
@@ -40,25 +43,18 @@ def estimate_percentage_from_voltage(mv: int) -> int:
 class LogitechHidppDriver(BaseDeviceDriver):
     """
     Direct communication with Logitech HID++ 2.0 / 1.0 devices.
-    Engineered with:
-    - Smart Feature Index Caching (avoids repeated IRoot discovery RF packets)
-    - Single-Packet Fast Battery Refresh (1 packet = ~1ms RF airtime)
-    - RF Sleep Backoff (skips inactive/sleeping slots to allow mouse deep-sleep)
+    Resilient across direct motherboard ports and Monitor Hubs / KVMs.
     """
 
     def __init__(self, raw_hid: WinRawHid):
         self.raw_hid = raw_hid
-        # Cache device feature indices and names: key = (pid, slot)
-        # Value = {"feat_1004": int, "feat_1000": int, "is_10": bool, "name": str, "offline_skips": int}
         self._device_cache: Dict[Tuple[int, int], Dict[str, Any]] = {}
-        # Empty slots cache: key = (pid, slot), value = skip_counter
         self._empty_slot_skips: Dict[Tuple[int, int], int] = {}
-        # Cached target HID endpoints
         self._cached_endpoints: List[HidDeviceInfo] = []
         self._last_endpoint_scan: float = 0.0
 
     def name(self) -> str:
-        return "Logitech HID++ Driver (Radio-Friendly)"
+        return "Logitech HID++ Driver (Hub-Resilient)"
 
     def scan_devices(self) -> List[PeripheralDevice]:
         devices: List[PeripheralDevice] = []
@@ -66,15 +62,14 @@ class LogitechHidppDriver(BaseDeviceDriver):
             return devices
 
         now = time.time()
-        # Refresh HID endpoints only once every 60s (prevents constant USB bus enumeration overhead)
-        if not self._cached_endpoints or (now - self._last_endpoint_scan > 60.0):
+        # Refresh endpoints periodically (every 45s) or on initial boot
+        if not self._cached_endpoints or (now - self._last_endpoint_scan > 45.0):
             hid_list = self.raw_hid.enumerate_devices(target_vid=LOGITECH_VID)
-            self._cached_endpoints = [
-                dev for dev in hid_list
-                if dev.usage_page in (0xFF00, 0xFF43) or dev.output_len >= 7
-            ]
-            if not self._cached_endpoints:
-                self._cached_endpoints = hid_list
+            # Hub-resilient: Do NOT discard endpoints if usage_page differs on monitor hubs!
+            # Sort endpoints: prioritize vendor-defined usage pages (0xFF00, 0xFF43), then try all
+            vendor_eps = [ep for ep in hid_list if ep.usage_page in (0xFF00, 0xFF43)]
+            other_eps = [ep for ep in hid_list if ep.usage_page not in (0xFF00, 0xFF43)]
+            self._cached_endpoints = vendor_eps + other_eps
             self._last_endpoint_scan = now
 
         seen_keys = set()
@@ -85,14 +80,13 @@ class LogitechHidppDriver(BaseDeviceDriver):
                 continue
 
             try:
-                # Slot 0x01 is the standard paired mouse in 99% of setups.
-                # Direct wired devices or Powerplay mat receiver are 0xFF or 0x01.
-                device_slots = [0x01, 0xFF, 0x02]
+                # Probe slots: 0x01 (primary wireless), 0xFF (wired/receiver), 0x02, 0x03, 0x04
+                device_slots = [0x01, 0xFF, 0x02, 0x03]
 
                 for slot in device_slots:
                     cache_key = (ep.pid, slot)
 
-                    # Check if this empty slot should be skipped to prevent waking RF
+                    # Back off probing inactive empty slots
                     if cache_key in self._empty_slot_skips:
                         skips_left = self._empty_slot_skips[cache_key]
                         if skips_left > 0:
@@ -119,9 +113,8 @@ class LogitechHidppDriver(BaseDeviceDriver):
                         )
                         devices.append(device)
                     else:
-                        # Empty slot: back off probing for the next 5 scan cycles (approx 3~5 minutes)
                         if cache_key not in self._device_cache:
-                            self._empty_slot_skips[cache_key] = 5
+                            self._empty_slot_skips[cache_key] = 4
 
             finally:
                 self.raw_hid.close_device(handle)
@@ -129,31 +122,23 @@ class LogitechHidppDriver(BaseDeviceDriver):
         return devices
 
     def _smart_query_slot(self, handle: int, pid: int, slot: int, fallback_name: str) -> Tuple[Optional[BatteryInfo], str]:
-        """
-        Fast-path: If feature index is already cached, sends ONLY ONE 20-byte battery read packet!
-        Zero IRoot query, zero Name query, near-zero RF power consumption.
-        """
         cache_key = (pid, slot)
         cached = self._device_cache.get(cache_key)
 
         if cached:
-            # Check offline backoff (if mouse is in deep sleep, don't hammer it every cycle)
             if cached.get("offline_skips", 0) > 0:
                 cached["offline_skips"] -= 1
                 return None, cached["name"]
 
-            # 1. Fast-path: Feature 0x1004 (Unified Battery) - 1 single packet
             if cached.get("feat_1004"):
                 bat = self._read_feature_1004_battery(handle, slot, cached["feat_1004"])
                 if bat:
                     cached["offline_skips"] = 0
                     return bat, cached["name"]
                 else:
-                    # Mouse didn't respond (likely entered RF deep-sleep)
                     cached["offline_skips"] = 2
                     return None, cached["name"]
 
-            # 2. Fast-path: Feature 0x1000 (Battery Voltage) - 1 single packet
             if cached.get("feat_1000"):
                 bat = self._read_feature_1000_battery(handle, slot, cached["feat_1000"])
                 if bat:
@@ -163,7 +148,6 @@ class LogitechHidppDriver(BaseDeviceDriver):
                     cached["offline_skips"] = 2
                     return None, cached["name"]
 
-            # 3. Fast-path: HID++ 1.0 Register 0x0D - 1 single short packet
             if cached.get("is_10"):
                 bat = self._read_hidpp10_battery(handle, slot)
                 if bat:
@@ -173,12 +157,10 @@ class LogitechHidppDriver(BaseDeviceDriver):
                     cached["offline_skips"] = 2
                     return None, cached["name"]
 
-        # Slow-path: First-time device discovery (performed ONCE per device lifetime)
         return self._discover_and_cache_slot(handle, pid, slot, fallback_name)
 
     def _discover_and_cache_slot(self, handle: int, pid: int, slot: int, fallback_name: str) -> Tuple[Optional[BatteryInfo], str]:
-        """Resolves feature indices and caches them permanently to minimize future RF traffic."""
-        # 1. Try HID++ 2.0 Unified Battery (0x1004)
+        # 1. Feature 0x1004 (Unified Battery)
         feature_idx_1004 = self._get_feature_index(handle, slot, FEATURE_UNIFIED_BATTERY)
         if feature_idx_1004:
             bat = self._read_feature_1004_battery(handle, slot, feature_idx_1004)
@@ -193,7 +175,7 @@ class LogitechHidppDriver(BaseDeviceDriver):
                 }
                 return bat, name
 
-        # 2. Try HID++ 2.0 Battery Voltage (0x1000)
+        # 2. Feature 0x1000 (Battery Voltage)
         feature_idx_1000 = self._get_feature_index(handle, slot, FEATURE_BATTERY_VOLTAGE)
         if feature_idx_1000:
             bat = self._read_feature_1000_battery(handle, slot, feature_idx_1000)
@@ -208,7 +190,7 @@ class LogitechHidppDriver(BaseDeviceDriver):
                 }
                 return bat, name
 
-        # 3. Fallback: HID++ 1.0 Battery Register (0x0D)
+        # 3. Fallback: HID++ 1.0 Register 0x0D
         bat = self._read_hidpp10_battery(handle, slot)
         if bat:
             name = fallback_name or "Logitech Legacy Device"
@@ -223,18 +205,30 @@ class LogitechHidppDriver(BaseDeviceDriver):
 
         return None, ""
 
-    def _send_and_read(self, handle: int, request: bytes, timeout_reads: int = 3) -> Optional[bytes]:
-        """Fast non-blocking read exchange."""
-        if not self.raw_hid.write_output_report(handle, request):
+    def _send_and_read(self, handle: int, request: bytes, timeout_reads: int = 4) -> Optional[bytes]:
+        """
+        Sends report with dual Output/Feature transport support across USB Hubs,
+        and reads back matching response.
+        """
+        # 1. Try sending via Output Report (WriteFile / HidD_SetOutputReport)
+        sent = self.raw_hid.write_output_report(handle, request)
+        if not sent:
+            # 2. Fallback: Try sending as Feature Report (some monitor hubs map HID++ to Feature reports)
+            sent = self.raw_hid.set_feature_report(handle, request)
+
+        if not sent:
             return None
 
-        # Quick check for response (Logitech receivers respond in 1-5ms)
+        # Read back response (supports both Input reports and Feature reports)
         for _ in range(timeout_reads):
             resp = self.raw_hid.read_input_report(handle, 32)
+            if not resp and len(request) > 0:
+                resp = self.raw_hid.get_feature_report(handle, request[0], 32)
+
             if resp and len(resp) >= 7:
                 if resp[0] in (0x10, 0x11) and resp[1] == request[1]:
                     return resp
-            time.sleep(0.005)  # Minimal 5ms sleep
+            time.sleep(0.005)
         return None
 
     def _get_feature_index(self, handle: int, slot: int, feature_id: int) -> Optional[int]:
@@ -246,7 +240,7 @@ class LogitechHidppDriver(BaseDeviceDriver):
         req[4] = (feature_id >> 8) & 0xFF
         req[5] = feature_id & 0xFF
 
-        resp = self._send_and_read(handle, bytes(req), timeout_reads=3)
+        resp = self._send_and_read(handle, bytes(req), timeout_reads=4)
         if resp and len(resp) >= 6:
             if resp[2] == 0x8F:
                 return None
@@ -262,7 +256,7 @@ class LogitechHidppDriver(BaseDeviceDriver):
         req[2] = feature_idx
         req[3] = 0x00
 
-        resp = self._send_and_read(handle, bytes(req), timeout_reads=3)
+        resp = self._send_and_read(handle, bytes(req), timeout_reads=4)
         if resp and len(resp) >= 7:
             percentage = resp[4]
             status_code = resp[6]
@@ -284,7 +278,7 @@ class LogitechHidppDriver(BaseDeviceDriver):
         req[2] = feature_idx
         req[3] = 0x00
 
-        resp = self._send_and_read(handle, bytes(req), timeout_reads=3)
+        resp = self._send_and_read(handle, bytes(req), timeout_reads=4)
         if resp and len(resp) >= 7:
             voltage_mv = (resp[4] << 8) | resp[5]
             status_code = resp[6]
@@ -300,7 +294,7 @@ class LogitechHidppDriver(BaseDeviceDriver):
         req[1] = slot
         req[2] = 0x8D
 
-        resp = self._send_and_read(handle, bytes(req), timeout_reads=3)
+        resp = self._send_and_read(handle, bytes(req), timeout_reads=4)
         if resp and len(resp) >= 5 and resp[2] == 0x8D:
             val = resp[4]
             if 0 <= val <= 100:
@@ -319,7 +313,7 @@ class LogitechHidppDriver(BaseDeviceDriver):
         req[3] = 0x10
         req[4] = 0x00
 
-        resp = self._send_and_read(handle, bytes(req), timeout_reads=3)
+        resp = self._send_and_read(handle, bytes(req), timeout_reads=4)
         if resp and len(resp) >= 8:
             raw_chars = resp[5:]
             name_bytes = bytearray()

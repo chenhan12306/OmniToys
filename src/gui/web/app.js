@@ -252,9 +252,42 @@ document.getElementById('btn-refresh-battery')?.addEventListener('click', async 
   btn.disabled = false;
 });
 
-document.getElementById('toggle-battery')?.addEventListener('change', async (e) => {
-  await apiCall('/api/toggle_module', 'POST', { module_id: 'omni_battery', enabled: e.target.checked });
-  await refreshDashboard();
+document.getElementById('btn-diagnose-usb')?.addEventListener('click', async () => {
+  const container = document.getElementById('usb-diag-container');
+  const content = document.getElementById('usb-diag-content');
+  if (container.style.display === 'block') {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  content.innerHTML = '<span style="color: var(--text-secondary)">正在扫描主板与显示器 HUB 上的全部 USB/HID 拓扑...</span>';
+
+  const res = await apiCall('/api/action', 'POST', {
+    module_id: 'omni_battery',
+    action: 'diagnose_usb',
+    payload: {}
+  });
+
+  if (res && res.status === 'ok') {
+    const list = res.diagnostics || [];
+    if (list.length === 0) {
+      content.innerHTML = '<span style="color: var(--accent-yellow)">未检测到任何 HID 端点。请检查显示器 USB 上行线 (Upstream Cable) 是否插好。</span>';
+      return;
+    }
+    let html = '<table style="width:100%; border-collapse:collapse; text-align:left;">';
+    html += '<tr style="color:var(--text-secondary); border-bottom:1px solid var(--border-color);"><th>设备名称</th><th>VID:PID</th><th>UsagePage</th></tr>';
+    list.forEach(d => {
+      html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04); padding:4px 0;">
+        <td style="color:#ffffff; padding:4px 0;">${escapeHtml(d.name)}</td>
+        <td style="color:var(--accent-cyan); padding:4px 0;">${d.vid_hex}:${d.pid_hex}</td>
+        <td style="color:var(--text-secondary); padding:4px 0;">${d.usage_page}</td>
+      </tr>`;
+    });
+    html += '</table>';
+    content.innerHTML = html;
+  } else {
+    content.innerHTML = '<span style="color: var(--accent-red)">扫描失败。</span>';
+  }
 });
 
 // Fences Event Listeners
