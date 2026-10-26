@@ -194,8 +194,8 @@ document.getElementById('btn-test-pin')?.addEventListener('click', async () => {
   alert(res?.status === 'ok' ? `窗口置顶状态已切换: ${res.state}` : '测试置顶已触发');
 });
 
-// Periodic polling
-setInterval(refreshDashboard, 5000);
+// Periodic polling (15s interval to keep CPU at 0% when idle)
+setInterval(refreshDashboard, 15000);
 window.addEventListener('DOMContentLoaded', refreshDashboard);
 
 // ================= PowerRename Logic =================
