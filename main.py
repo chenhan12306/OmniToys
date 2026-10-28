@@ -8,6 +8,7 @@ Modern PowerToys-like Toolbox for Windows:
 - Modern Windows 11 Fluent Design Dashboard
 """
 
+import os
 import sys
 import argparse
 import threading
@@ -26,48 +27,52 @@ def main():
         description="OmniToys - Modern PowerToys-style Peripheral & Efficiency Toolbox"
     )
     parser.add_argument(
-        "--gui", action="store_true",
-        help="Launch the modern Fluent UI Dashboard window (Default)"
+        "--gui",
+        action="store_true",
+        help="Launch the modern Fluent UI Dashboard window (Default)",
     )
     parser.add_argument(
-        "--tray", action="store_true",
-        help="Run silently in background system tray mode only (no initial GUI popup)"
+        "--tray",
+        action="store_true",
+        help="Run silently in background system tray mode only (no initial GUI popup)",
     )
     parser.add_argument(
-        "--once", action="store_true",
-        help="Query device batteries once in terminal and exit"
+        "--once",
+        action="store_true",
+        help="Query device batteries once in terminal and exit",
     )
     parser.add_argument(
-        "--json", action="store_true",
-        help="Output device battery data in JSON format"
+        "--json",
+        action="store_true",
+        help="Output device battery data in JSON format",
     )
     parser.add_argument(
-        "--watch", action="store_true",
-        help="Continuously watch device battery statuses in terminal"
+        "--watch",
+        action="store_true",
+        help="Continuously watch device battery statuses in terminal",
     )
     parser.add_argument(
-        "--mock", action="store_true",
-        help="Run in simulation/mock mode for development"
+        "--mock",
+        action="store_true",
+        help="Run in simulation/mock mode for development",
     )
 
     args = parser.parse_args()
 
-    # Initialize PowerToys Core Host
     host = AppHost(enable_mock=args.mock)
+
+    # CLI modes must not start tray / hotkey machinery.
+    if args.once or args.json or args.watch:
+        battery_mod = host.modules.get("omni_battery")
+        if battery_mod:
+            if args.watch:
+                run_cli_watch(battery_mod.device_manager)
+            else:
+                run_cli_once(battery_mod.device_manager, as_json=args.json)
+        return
+
+    # Full toolbox: start enabled modules, then tray + optional dashboard.
     host.start_all()
-
-    if args.json or args.once:
-        battery_mod = host.modules.get("omni_battery")
-        if battery_mod:
-            run_cli_once(battery_mod.device_manager, as_json=args.json)
-        return
-
-    if args.watch:
-        battery_mod = host.modules.get("omni_battery")
-        if battery_mod:
-            run_cli_watch(battery_mod.device_manager)
-        return
-
     window = ModernWindowHost(host)
     battery_mod = host.modules.get("omni_battery")
     tray_app = None
@@ -78,25 +83,36 @@ def main():
             window.show_or_focus()
 
         def on_exit():
-            window.destroy()
+            # Called on the tray thread. Clean what we can, then leave immediately;
+            # os._exit avoids hanging on a cross-thread WebView destroy.
+            try:
+                tray_app.shutdown()
+            except Exception:
+                pass
             host.stop_all()
-            sys.exit(0)
+            os._exit(0)
 
         tray_app = TrayApplication(
             battery_mod.device_manager,
             on_open_gui=on_open_gui,
-            on_exit=on_exit
+            on_exit=on_exit,
+            alert_threshold_getter=lambda: int(
+                battery_mod.config.get("alert_threshold", 20) or 20
+            ),
+            enabled_getter=lambda: battery_mod.is_enabled,
+            poll_interval_getter=lambda: int(
+                battery_mod.config.get("poll_interval", 30) or 30
+            ),
         )
 
         if sys.platform.startswith("win"):
-            # Resident tray application running in dedicated message loop thread
-            # Non-daemon ensures tray stays alive even if GUI window is closed/hidden
+            # Non-daemon keeps the tray alive even if the GUI window is hidden.
             tray_thread = threading.Thread(
                 target=tray_app.run, daemon=False, name="OmniToysTrayThread"
             )
             tray_thread.start()
         elif args.tray:
-            # Fallback on non-windows CLI if explicit --tray requested
+            # Fallback on non-Windows CLI if explicit --tray requested
             tray_app.run()
             return
 
@@ -106,12 +122,31 @@ def main():
             try:
                 tray_thread.join()
             except KeyboardInterrupt:
+                tray_app.shutdown()
                 host.stop_all()
         return
 
-    # Default: Show Modern Fluent UI Dashboard
-    # Tray icon is already resident in taskbar notification area
-    window.show()
+    # Default: show the Modern Fluent UI Dashboard.
+    gui_running = window.show()
+
+    if gui_running:
+        # The native WebView returned, i.e. the user really closed the window.
+        host.stop_all()
+        if tray_app:
+            tray_app.shutdown()
+        if tray_thread and tray_thread.is_alive():
+            tray_thread.join(timeout=1.5)
+        window.stop_server()
+    else:
+        # Browser fallback: stay resident in the tray until the user exits.
+        if tray_thread:
+            try:
+                tray_thread.join()
+            except KeyboardInterrupt:
+                tray_app.shutdown()
+                host.stop_all()
+        else:
+            window.stop_server()
 
 
 if __name__ == "__main__":

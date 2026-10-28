@@ -74,6 +74,7 @@ class WinBluetoothScanner:
         """Direct C API reading from Windows PnP property store without spawning any process."""
         devices: List[PeripheralDevice] = []
         filter_prefixes = ["BTHLE\\", "BTHENUM\\"]
+        api_ok = False
 
         for prefix in filter_prefixes:
             buf_len = wintypes.ULONG()
@@ -82,7 +83,11 @@ class WinBluetoothScanner:
                 prefix,
                 CM_GETIDLIST_FILTER_PRESENT
             )
-            if cr != CR_SUCCESS or buf_len.value <= 1:
+            if cr != CR_SUCCESS:
+                continue
+            # A successful size query means cfgmgr32 works even when no device exists.
+            api_ok = True
+            if buf_len.value <= 1:
                 continue
 
             id_buffer = ctypes.create_unicode_buffer(buf_len.value)
@@ -104,9 +109,10 @@ class WinBluetoothScanner:
                 if self._cfgmgr32.CM_Locate_DevNodeW(ctypes.byref(devnode), inst_id, 0) != CR_SUCCESS:
                     continue
 
-                # Read Battery Level
+                # Read Battery Level. Depending on the driver the property may be
+                # a BYTE or a UINT32, so accept both instead of assuming one.
                 prop_type = wintypes.DWORD()
-                battery_val = wintypes.BYTE()
+                battery_val = wintypes.DWORD()
                 prop_size = wintypes.ULONG(ctypes.sizeof(battery_val))
 
                 cr = self._cfgmgr32.CM_Get_DevNode_PropertyW(
@@ -117,7 +123,13 @@ class WinBluetoothScanner:
                     ctypes.byref(prop_size),
                     0
                 )
-                if cr == CR_SUCCESS and 0 <= battery_val.value <= 100:
+                pct = -1
+                if cr == CR_SUCCESS:
+                    if prop_size.value >= 4:
+                        pct = int(battery_val.value)
+                    elif prop_size.value >= 1:
+                        pct = int(ctypes.cast(ctypes.byref(battery_val), ctypes.POINTER(wintypes.BYTE))[0])
+                if 0 <= pct <= 100:
                     # Read Device Friendly Name
                     name_size = wintypes.ULONG(256 * 2)
                     name_buf = ctypes.create_unicode_buffer(256)
@@ -137,17 +149,21 @@ class WinBluetoothScanner:
                         name=friendly_name,
                         category=cat,
                         connection_type=ConnectionType.BLUETOOTH,
-                        battery=BatteryInfo(percentage=battery_val.value, is_charging=ChargingStatus.UNKNOWN),
+                        battery=BatteryInfo(percentage=pct, is_charging=ChargingStatus.UNKNOWN),
                         is_online=True,
                         extra_meta={"instance_id": inst_id}
                     )
                     devices.append(dev)
 
+        # If every cfgmgr32 entry point failed, let the PowerShell fallback run.
+        if not api_ok:
+            return None
         return devices
 
     def _scan_powershell_fallback(self) -> List[PeripheralDevice]:
         """Fallback when native cfgmgr32 fails."""
         ps_script = (
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
             "$ErrorActionPreference = 'SilentlyContinue'; "
             "$devices = Get-PnpDevice | Where-Object { "
             "  ($_.Status -eq 'OK') -and "
@@ -170,13 +186,15 @@ class WinBluetoothScanner:
 
         try:
             res = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", ps_script],
                 capture_output=True,
                 text=True,
-                timeout=2.0,
-                creationflags=0x08000000 if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                encoding="utf-8",
+                errors="replace",
+                timeout=8.0,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
-            stdout = res.stdout.strip()
+            stdout = (res.stdout or "").strip()
             if not stdout or stdout == "[]":
                 return []
 
@@ -185,20 +203,23 @@ class WinBluetoothScanner:
                 data = [data]
 
             devices: List[PeripheralDevice] = []
-            seen_names = set()
+            seen_ids = set()
 
             for item in data:
                 name = item.get("Name") or "Bluetooth Device"
-                if name in seen_names:
+                inst_id = item.get("InstanceId", "")
+                dedupe_key = inst_id or name
+                if dedupe_key in seen_ids:
                     continue
-                seen_names.add(name)
+                seen_ids.add(dedupe_key)
 
                 battery_val = item.get("Battery")
                 if battery_val is None:
                     continue
 
                 battery_pct = int(battery_val)
-                inst_id = item.get("InstanceId", "")
+                if not 0 <= battery_pct <= 100:
+                    continue
                 category = self._guess_category(name, item.get("Class", ""))
 
                 device = PeripheralDevice(

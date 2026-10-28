@@ -9,7 +9,7 @@
 
 **OmniBattery 的核心目标**：
 1. **0 侵入**：绝不发送任何修改 DPI、宏、RGB 的写指令，只做电量与充电状态只读探测。
-2. **极低资源**：纯 Windows 原生 API（GDI / HID / SetupAPI），常驻内存 **< 15MB**，CPU 消耗趋于 **0%**。
+2. **低资源**：纯 Windows 原生 API（GDI / HID / SetupAPI），后台探测路径不依赖 Electron / 浏览器内核；Dashboard 使用 WebView2 时由系统共享运行时承担渲染开销。
 3. **多协议聚合**：单一界面同时显示罗技 2.4G Lightspeed、微软标准蓝牙、常见国产 2.4G 接收器电量。
 
 ---
@@ -88,11 +88,21 @@ Windows 10/11 系统在内核驱动层对实现了 Bluetooth GATT Battery Servic
 
 - **任务栏动态徽标**：
   利用 Windows GDI 内存绘图（`CreateCompatibleBitmap` + `DrawTextW`），将鼠标主电量数值（例如 `78`）以 32x32 清晰抗锯齿位图直接合成任务栏托盘图标。
-  - 电量 ≥ 40%：清爽荧光绿
-  - 电量 20% ~ 40%：琥珀黄
+  - 电量 ≥ 45%：清爽荧光绿
+  - 电量 20% ~ 44%：琥珀黄
   - 电量 < 20%：警示红色
   - 充电中：青色并带有 `⚡` 标识
 - **右键上下文菜单**：
   直接罗列当前在线的所有设备名称、电量及充电状态，提供“立即刷新”和“退出”。
 - **低电量原生通知**：
   当鼠标电量跌破 20% / 10% 阈值且未连接充电线时，触发 Windows 系统级气泡 / Toast 通知，避免在激烈游戏时突然断电。
+
+---
+
+## 5. 线程与安全约束（实现要点）
+
+- **Win32 窗口线程亲和**：托盘隐藏窗口、置顶热键窗口都在各自专用的消息线程中创建/销毁；HTTP 线程只通过 `PostThreadMessageW` 投递命令，绝不在请求线程里直接调用 `CreateWindowExW` / `DestroyWindow`。
+- **HID 读取必须有界**：`ReadFile` 使用 `FILE_FLAG_OVERLAPPED` + 事件等待 + `CancelIoEx`，单次读取有毫秒级超时；设备不应答时扫描线程、托盘和 Web UI 都不会被永久阻塞。
+- **Awake 线程绑定**：`SetThreadExecutionState` 是线程级的，因此由一条常驻 worker 线程持有并释放执行状态，而不是在短命的 HTTP 请求线程里调用。
+- **本地 API 鉴权**：HTTP 服务只绑定 `127.0.0.1`；`index.html` 注入每次启动随机生成的 Token，所有 `POST` 都必须携带 `X-OmniToys-Token`，并校验 `Origin`，防止任意网页对 localhost 发起 CSRF 重命名/模块开关。
+- **配置隔离**：配置默认写入 `%APPDATA%\OmniToys\omnitoys_config.json`，原子替换；默认字典全部深拷贝，模块不会污染全局默认值。

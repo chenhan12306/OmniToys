@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="omni-token" content="__OMNITOYS_TOKEN__">
   <title>OmniToys - 现代化外设与效率工具箱</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -26,10 +27,6 @@
         <div class="nav-item" data-page="omni_battery">
           <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" class="fluent-svg-icon"><rect x="2" y="6" width="17" height="12" rx="3" stroke="#28a745" stroke-width="2"/><path d="M21 10v4" stroke="#28a745" stroke-width="2" stroke-linecap="round"/><path d="M10 8l-3 4h4l-2 4" stroke="#00e5ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <span>外设电量监控</span>
-        </div>
-        <div class="nav-item" data-page="desktop_fences">
-          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" class="fluent-svg-icon"><rect x="3" y="3" width="8" height="8" rx="2" fill="rgba(0,120,212,0.3)" stroke="#0078d4" stroke-width="1.8"/><rect x="13" y="3" width="8" height="8" rx="2" fill="rgba(0,120,212,0.2)" stroke="#0078d4" stroke-width="1.8"/><rect x="3" y="13" width="18" height="8" rx="2" fill="rgba(0,120,212,0.25)" stroke="#0078d4" stroke-width="1.8"/></svg></span>
-          <span>桌面栅栏 (Fences)</span>
         </div>
         <div class="nav-item" data-page="power_rename">
           <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" class="fluent-svg-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="#a78bfa" stroke-width="1.8"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"/></svg></span>
@@ -137,93 +134,6 @@
               <option value="20" selected>20% (推荐)</option>
               <option value="10">10%</option>
             </select>
-          </div>
-        </div>
-      </section>
-
-      <!-- 2.2 Desktop Fences Page -->
-      <section id="page-desktop_fences" class="page-view" style="display: none;">
-        <div class="page-header">
-          <div class="header-left">
-            <h1>桌面栅栏 (Desktop Fences)</h1>
-            <p>微软 Windows 桌面图标与文件分区整理利器（1:1 复刻 Stardock Fences）。自动在桌面上生成半透明磨砂玻璃容器，支持双击折叠卷起、文件夹传送门与一键隐藏桌面。</p>
-          </div>
-          <div class="switch-container">
-            <span style="font-size: 13px; color: var(--text-secondary);">启用栅栏</span>
-            <label class="switch">
-              <input type="checkbox" id="toggle-fences" checked>
-              <span class="slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Fences Global Controls -->
-        <div class="card-section">
-          <div class="fluent-card" style="justify-content: space-between;">
-            <div class="card-info">
-              <div class="card-icon">🗂️</div>
-              <div class="card-texts">
-                <h3>栅栏桌面容器管理</h3>
-                <p>每个栅栏对应桌面上的一个可拖拽毛玻璃窗口，双击标题栏可卷起折叠</p>
-              </div>
-            </div>
-            <div style="display: flex; gap: 10px;">
-              <button class="btn" id="btn-toggle-all-fences">👁️ 显示/隐藏全部栅栏</button>
-              <button class="btn btn-primary" id="btn-open-create-fence">➕ 新建桌面栅栏</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quick Create Modal/Card (Hidden by default) -->
-        <div class="card-section" id="create-fence-card" style="display: none;">
-          <div class="fluent-card" style="flex-direction: column; align-items: stretch; gap: 12px; border: 1px solid var(--accent-color);">
-            <div style="font-size: 14px; font-weight: 600;">新建桌面栅栏容器</div>
-            <div class="input-row">
-              <span class="input-label">栅栏标题:</span>
-              <input type="text" id="new-fence-title" class="fluent-input" placeholder="例如: 常用软件 / 工作表格 / 待办便签">
-            </div>
-            <div class="input-row">
-              <span class="input-label">映射文件夹:</span>
-              <input type="text" id="new-fence-folder" class="fluent-input" placeholder="文件夹绝对路径，不填则默认自动在桌面创建专属目录">
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px;">
-              <button class="btn" id="btn-cancel-create-fence">取消</button>
-              <button class="btn btn-primary" id="btn-confirm-create-fence">确认创建并显示在桌面</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Active Fences List -->
-        <div class="card-section">
-          <div class="section-title">当前桌面活跃栅栏</div>
-          <div id="fences-list-container">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-
-        <!-- Features & Shortcuts Info -->
-        <div class="card-section">
-          <div class="section-title">操作手势与快捷技巧 (Stardock Fences 专属)</div>
-          <div class="fluent-card">
-            <div class="card-info">
-              <div class="card-icon">👆</div>
-              <div class="card-texts">
-                <h3>双击标题栏卷起折叠 (Roll-Up)</h3>
-                <p>双击任意栅栏的顶部标题栏，栅栏会自动卷起收缩为一条细长标签；再次双击展开完整内容。</p>
-              </div>
-            </div>
-            <span class="tag">双击标题</span>
-          </div>
-
-          <div class="fluent-card">
-            <div class="card-info">
-              <div class="card-icon">🖱️</div>
-              <div class="card-texts">
-                <h3>自由拖拽与边框拉伸</h3>
-                <p>鼠标按住标题栏可在桌面上自由拖动停靠；按住右下角可任意调整栅栏的宽度与高度。</p>
-              </div>
-            </div>
-            <span class="tag">自由停靠</span>
           </div>
         </div>
       </section>
@@ -422,7 +332,10 @@
                 <p>按此热键立即置顶/取消置顶当前激活的前台窗口</p>
               </div>
             </div>
-            <span class="btn">Ctrl + Win + T</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
+              <span class="btn" id="pinner-hotkey">Ctrl + Win + T</span>
+              <span class="tag" id="pinner-status">检测中...</span>
+            </div>
           </div>
 
           <div class="fluent-card">
@@ -453,7 +366,7 @@
               <div class="card-icon">🚀</div>
               <div class="card-texts">
                 <h3>开机时静默自启动</h3>
-                <p>Windows 启动后自动最小化运行在系统托盘，不弹窗打扰</p>
+                <p>在 HKCU 当前用户启动项中注册（无需管理员权限），登录后自动运行在系统托盘</p>
               </div>
             </div>
             <label class="switch">

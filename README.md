@@ -15,10 +15,9 @@
    - **任务栏动态电量数字徽标**：在 Windows 任务栏直接显示当前主鼠标电量数字（如 `78`，绿/黄/红分级变色，充电带 `⚡` 标识）。
 3. **已内置的 PowerToys 风格小工具**：
    - 🔋 **外设电量监控 (OmniBattery)**：替代 G HUB，多设备电量统一看。
-   - 🗂️ **桌面栅栏 (Desktop Fences)**：对标知名桌面整理软件 Stardock Fences，在 Windows 桌面上创建半透明毛玻璃分区容器，支持双击标题栏卷起收纳 (Roll-Up)、文件夹实时传送门与双击桌面空白隐藏。
    - 🏷️ **批量重命名 (PowerRename)**：对标 PowerToys PowerRename，支持高级正则替换、大小写格式转换、自动递增编号、实时表格更名预览与安全一键撤销。
    - ☕ **保持清醒 (Awake)**：对应 PowerToys Awake，长时下载、渲染或挂机时阻止电脑休眠或显示器黑屏。
-   - 📌 **窗口置顶 (Always on Top)**：对应 PowerToys Always on Top，快捷键让任何计算器、记事本或视频窗口悬浮在顶层。
+   - 📌 **窗口置顶 (Always on Top)**：对应 PowerToys Always on Top，`Ctrl + Win + T` 全局热键让任何计算器、记事本或视频窗口悬浮在顶层。
 4. **编译为单文件 EXE**：
    - 提供开箱即用的 `build.bat` 与 `OmniToys.spec`，一键生成无黑框控制台的单文件 `OmniToys.exe`，启动即用，方便分享与随身携带。
 
@@ -34,15 +33,18 @@ pip install -r requirements.txt
 # 2. 启动现代 Fluent UI 仪表盘 (默认模式)
 python main.py
 
-# 3. 仅在后台系统托盘运行 (极致节能，内存仅约 12MB)
+# 3. 仅在后台系统托盘运行 (不弹出 Dashboard)
 python main.py --tray
 
 # 4. 终端单次查看电量并退出
 python main.py --once
 ```
 
+> 配置保存在 `%APPDATA%\OmniToys\omnitoys_config.json`，不会污染程序目录。
+> Dashboard 的本地 HTTP API 仅监听 `127.0.0.1`，所有写操作都要求每次启动随机生成的 Token。
+
 ### 方式 B：一键编译为单个 `.exe` 文件
-在 Windows 电脑上直接双击根目录下的 **[build.bat](file:///Users/han/Documents/2.4G-device-controller/build.bat)**，或者执行：
+在 Windows 电脑上直接双击根目录下的 **[build.bat](build.bat)**，或者执行：
 ```powershell
 pyinstaller OmniToys.spec --clean
 ```
@@ -53,7 +55,17 @@ pyinstaller OmniToys.spec --clean
 
 ---
 
+## 🧪 运行测试
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+测试覆盖电量估算、模拟设备、Custom 2.4G 配置加载、重命名预览/磁盘操作/撤销/大小写改名/路径穿越防护、配置隔离、AppHost 集成与安全清理。
+
+---
+
 ## 🛠️ 如何添加更多新工具？
 
-参考详尽文档：**[HOW_TO_ADD_A_TOOL.md](file:///Users/han/Documents/2.4G-device-controller/HOW_TO_ADD_A_TOOL.md)**。
-只需在 `src/modules/` 中新建一个继承自 `ToyModule` 的类，并在 `app_host.py` 中注册，新工具就会自动出现在工具箱中，拥有自己的开关与状态面板！
+参考详尽文档：**[HOW_TO_ADD_A_TOOL.md](HOW_TO_ADD_A_TOOL.md)**。
+只需在 `src/modules/` 中新建一个继承自 `ToyModule` 的类，并在 `app_host.py` 中注册，新工具就会自动出现在工具箱中，拥有自己的开关与状态面板！需要后台保存设置的模块可调用 `set_config_saver` 注入的 `save_config()`。

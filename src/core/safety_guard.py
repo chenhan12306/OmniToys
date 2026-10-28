@@ -4,7 +4,6 @@ Ensures zero system pollution and safe state restoration even on unexpected / fo
 1. Automatically resets Windows thread execution state (SetThreadExecutionState -> ES_CONTINUOUS).
 2. Unpins all topmost windows pinned by Window Pinner.
 3. Deletes system tray icon (eliminates ghost icons on the Windows taskbar).
-4. Closes all fence windows and destroys GDI handles.
 5. Catches SIGINT, SIGTERM, atexit, and Windows Console Ctrl Events (logoff, shutdown, close).
 """
 

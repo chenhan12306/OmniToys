@@ -75,14 +75,19 @@ def _register_default_modules(self):
         self.register_module(mod)
 ```
 
+`AppHost.register_module()` 会自动注入配置保存回调。如果你的模块在后台线程里修改了 `self.config`（例如定时更新设置），调用 `self.save_config()` 即可持久化，无需自己保存 JSON。
+
 ---
 
 ### 步骤 3：在前端添加导航与视图（可选）
 如果你的工具需要专属的设置卡片页面，只需在 `src/gui/web/index.html` 中的导航栏和内容区添加对应项即可。如果不加专属页面，OmniToys 会自动将其渲染在**主页概览（Dashboard）**卡片中，并附带开/关切换滑块！
 
+> 前端所有写请求都通过 `apiCall()` 自动携带 `X-OmniToys-Token`，不要绕过它直接 `fetch` POST，否则会被本地 API 拒绝（403）。
+
 ---
 
 ## 现已内置的 PowerToys 风格模块
 1. **外设电量监控 (`omni_battery`)**：替代 G HUB，直连罗技 HID++ 2.0、Windows 蓝牙与国产 2.4G 接收器。
-2. **保持清醒 (`awake`)**：对应 PowerToys Awake，长时任务不黑屏、不休眠。
-3. **窗口置顶 (`window_pinner`)**：对应 PowerToys Always on Top，快捷键置顶任意前台程序。
+2. **批量重命名 (`power_rename`)**：正则替换、大小写转换、自动编号、撤销。
+3. **保持清醒 (`awake`)**：对应 PowerToys Awake，长时任务不黑屏、不休眠。
+4. **窗口置顶 (`window_pinner`)**：对应 PowerToys Always on Top，`Ctrl+Win+T` 全局热键。

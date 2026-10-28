@@ -4,7 +4,8 @@ Every utility/toy implements this interface to be managed by the AppHost.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+import copy
+from typing import Dict, Any, Optional, Callable
 
 
 class ToyModule(ABC):
@@ -17,12 +18,24 @@ class ToyModule(ABC):
         self.icon = icon  # Icon identifier (e.g. 'battery', 'coffee', 'pin')
         self.is_enabled: bool = True
         self.config: Dict[str, Any] = {}
+        self._save_config_cb: Optional[Callable[[], None]] = None
+
+    def set_config_saver(self, callback: Optional[Callable[[], None]]):
+        """AppHost injects a callback so background threads can persist settings."""
+        self._save_config_cb = callback
+
+    def save_config(self):
+        if self._save_config_cb:
+            try:
+                self._save_config_cb()
+            except Exception as exc:
+                print(f"[{self.module_id}] Could not save config: {exc}")
 
     def init_config(self, saved_config: Optional[Dict[str, Any]] = None):
         """Initializes module configuration with saved user settings or defaults."""
-        defaults = self.default_config()
+        defaults = copy.deepcopy(self.default_config())
         if saved_config:
-            defaults.update(saved_config)
+            defaults.update(copy.deepcopy(saved_config))
         self.config = defaults
         self.is_enabled = self.config.get("enabled", True)
 

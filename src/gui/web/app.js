@@ -9,6 +9,8 @@ let appData = {
   global_settings: {}
 };
 
+const OMNI_TOKEN = document.querySelector('meta[name="omni-token"]')?.content || '';
+
 // Navigation
 document.querySelectorAll('.nav-item').forEach(item => {
   item.addEventListener('click', () => {
@@ -31,8 +33,15 @@ function switchPage(pageId) {
 async function apiCall(endpoint, method = 'GET', body = null) {
   try {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (method !== 'GET') {
+      opts.headers['X-OmniToys-Token'] = OMNI_TOKEN;
+    }
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(endpoint, opts);
+    if (!res.ok) {
+      console.warn(`[API] ${endpoint} returned HTTP ${res.status}`);
+      return null;
+    }
     return await res.json();
   } catch (err) {
     console.warn(`[API] Error on ${endpoint}:`, err);
@@ -47,8 +56,9 @@ async function refreshDashboard() {
   appData = data;
   renderDashboard(data);
   renderBatteryPage(data);
-  renderFencesPage(data);
   renderAwakePage(data);
+  renderPinnerPage(data);
+  renderSettingsPage(data);
 }
 
 function renderDashboard(data) {
@@ -58,7 +68,6 @@ function renderDashboard(data) {
 
   const svgIcons = {
     battery: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><rect x="2" y="6" width="17" height="12" rx="3" stroke="#28a745" stroke-width="2"/><path d="M21 10v4" stroke="#28a745" stroke-width="2" stroke-linecap="round"/><path d="M10 8l-3 4h4l-2 4" stroke="#00e5ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    fences: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><rect x="3" y="3" width="8" height="8" rx="2" fill="rgba(0,120,212,0.3)" stroke="#0078d4" stroke-width="1.8"/><rect x="13" y="3" width="8" height="8" rx="2" fill="rgba(0,120,212,0.2)" stroke="#0078d4" stroke-width="1.8"/><rect x="3" y="13" width="18" height="8" rx="2" fill="rgba(0,120,212,0.25)" stroke="#0078d4" stroke-width="1.8"/></svg>',
     rename: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="#a78bfa" stroke-width="1.8"/><path d="M14 2v6h6M8 13h8M8 17h5" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"/></svg>',
     coffee: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><path d="M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" stroke="#f59e0b" stroke-width="1.8"/><path d="M6 1v3M10 1v3M14 1v3" stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round"/></svg>',
     pin: '<svg viewBox="0 0 24 24" fill="none" class="dash-svg-icon"><path d="M12 17v5M5 7l3 3-4 6 7-2 3 3 2-2-9-9 2-2-2-2-4 4z" stroke="#ec4899" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -80,8 +89,8 @@ function renderDashboard(data) {
         <span class="dash-status ${statusClass}">${statusText}</span>
       </div>
       <div class="dash-bottom">
-        <h3>${mod.name}</h3>
-        <p>${mod.description}</p>
+        <h3>${escapeHtml(mod.name)}</h3>
+        <p>${escapeHtml(mod.description)}</p>
       </div>
     `;
     container.appendChild(card);
@@ -101,6 +110,22 @@ function renderBatteryPage(data) {
 
   const toggle = document.getElementById('toggle-battery');
   if (toggle) toggle.checked = batteryMod.enabled;
+
+  const intervalSelect = document.getElementById('select-battery-interval');
+  if (intervalSelect && batteryMod.state?.poll_interval != null) {
+    const value = String(batteryMod.state.poll_interval);
+    if ([...intervalSelect.options].some(o => o.value === value)) {
+      intervalSelect.value = value;
+    }
+  }
+
+  const alertSelect = document.getElementById('select-battery-alert');
+  if (alertSelect && batteryMod.state?.alert_threshold != null) {
+    const value = String(batteryMod.state.alert_threshold);
+    if ([...alertSelect.options].some(o => o.value === value)) {
+      alertSelect.value = value;
+    }
+  }
 
   const container = document.getElementById('device-list-container');
   if (container) {
@@ -123,31 +148,34 @@ function renderDeviceCards(devices, container) {
     const card = document.createElement('div');
     card.className = 'device-card';
 
-    const pct = dev.percentage;
+    const rawPct = Number(dev.percentage);
+    const pct = Number.isFinite(rawPct) ? rawPct : -1;
     let barColor = 'var(--accent-green)';
     if (pct < 20) barColor = 'var(--accent-red)';
     else if (pct < 45) barColor = 'var(--accent-yellow)';
     if (dev.charging) barColor = 'var(--accent-cyan)';
+    const fillPct = Math.max(0, Math.min(100, pct));
 
     const devIcons = { Mouse: '🖱️', Keyboard: '⌨️', Headset: '🎧', Gamepad: '🎮', Other: '🔌' };
     const icon = devIcons[dev.category] || '🖱️';
+    const voltage = dev.voltage_mv ? `<span class="tag">${escapeHtml(dev.voltage_mv)} mV</span>` : '';
 
     card.innerHTML = `
       <div class="device-left">
         <div class="card-icon" style="font-size: 20px;">${icon}</div>
         <div class="device-meta">
-          <div class="device-name">${dev.name}</div>
+          <div class="device-name">${escapeHtml(dev.name)}</div>
           <div class="device-tags">
-            <span class="tag">${dev.connection}</span>
+            <span class="tag">${escapeHtml(dev.connection)}</span>
             ${dev.charging ? '<span class="tag tag-charging">⚡ 充电中</span>' : ''}
-            ${dev.voltage_mv ? `<span class="tag">${dev.voltage_mv} mV</span>` : ''}
+            ${voltage}
           </div>
         </div>
       </div>
       <div class="device-right">
         <div class="battery-display">
           <div class="battery-bar-bg">
-            <div class="battery-bar-fill" style="width: ${Math.max(0, pct)}%; background-color: ${barColor};"></div>
+            <div class="battery-bar-fill" style="width: ${fillPct}%; background-color: ${barColor};"></div>
           </div>
           <div class="battery-num" style="color: ${barColor}">${pct >= 0 ? pct + '%' : '未知'}</div>
         </div>
@@ -157,77 +185,15 @@ function renderDeviceCards(devices, container) {
   });
 }
 
-function renderFencesPage(data) {
-  const mod = data.modules.find(m => m.id === 'desktop_fences');
-  if (!mod) return;
-
-  const toggle = document.getElementById('toggle-fences');
-  if (toggle) toggle.checked = mod.enabled;
-
-  const container = document.getElementById('fences-list-container');
-  if (!container) return;
-
-  const fences = mod.state?.fences || [];
-  if (fences.length === 0) {
-    container.innerHTML = `
-      <div class="fluent-card" style="justify-content: center; color: var(--text-secondary); padding: 30px;">
-        桌面暂无活跃栅栏。点击上方“新建桌面栅栏”即可在桌面创建第一个分区！
-      </div>
-    `;
-    return;
-  }
-
-  container.innerHTML = '';
-  fences.forEach(fence => {
-    const card = document.createElement('div');
-    card.className = 'fluent-card';
-    card.style.marginBottom = '8px';
-
-    const rollText = fence.is_rolled_up ? '▼ 展开' : '▲ 折叠卷起';
-
-    card.innerHTML = `
-      <div class="card-info">
-        <div class="card-icon">🗂️</div>
-        <div class="card-texts">
-          <h3>${escapeHtml(fence.title)} (${fence.item_count || 0} 个桌面文件)</h3>
-          <p>位置: (${fence.x}, ${fence.y}) | 大小: ${fence.width}x${fence.height} | 路径: ${escapeHtml(fence.folder_path)}</p>
-        </div>
-      </div>
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <button class="btn btn-rollup-fence" data-id="${fence.id}">${rollText}</button>
-        <button class="btn btn-del-fence" data-id="${fence.id}" style="color: var(--accent-red)">删除</button>
-      </div>
-    `;
-    container.appendChild(card);
-  });
-
-  // Roll-up button click
-  container.querySelectorAll('.btn-rollup-fence').forEach(btn => {
-    btn.onclick = async () => {
-      const id = btn.getAttribute('data-id');
-      await apiCall('/api/action', 'POST', { module_id: 'desktop_fences', action: 'toggle_rollup', payload: { id } });
-      await refreshDashboard();
-    };
-  });
-
-  // Delete button click
-  container.querySelectorAll('.btn-del-fence').forEach(btn => {
-    btn.onclick = async () => {
-      const id = btn.getAttribute('data-id');
-      if (confirm('确定要从桌面移除该栅栏吗？(原文件不会被删除)')) {
-        await apiCall('/api/action', 'POST', { module_id: 'desktop_fences', action: 'delete_fence', payload: { id } });
-        await refreshDashboard();
-      }
-    };
-  });
-}
 
 function renderAwakePage(data) {
   const mod = data.modules.find(m => m.id === 'awake');
   if (!mod) return;
   const toggle = document.getElementById('toggle-awake');
+  const screenToggle = document.getElementById('toggle-awake-screen');
   const tag = document.getElementById('awake-status-tag');
-  if (toggle) toggle.checked = mod.state?.is_active || false;
+  if (toggle) toggle.checked = !!mod.enabled;
+  if (screenToggle) screenToggle.checked = mod.state?.keep_screen_on !== false;
   if (tag) {
     if (mod.state?.is_active) {
       tag.textContent = '运行中 (电脑不休眠)';
@@ -239,6 +205,39 @@ function renderAwakePage(data) {
       tag.style.background = 'rgba(255, 255, 255, 0.06)';
     }
   }
+}
+
+function renderPinnerPage(data) {
+  const mod = data.modules.find(m => m.id === 'window_pinner');
+  if (!mod) return;
+
+  const toggle = document.getElementById('toggle-pinner');
+  if (toggle) toggle.checked = !!mod.enabled;
+
+  const hotkey = document.getElementById('pinner-hotkey');
+  if (hotkey) hotkey.textContent = mod.state?.shortcut || 'Ctrl + Win + T';
+
+  const status = document.getElementById('pinner-status');
+  if (status) {
+    if (!mod.enabled) {
+      status.textContent = '未启用';
+      status.style.color = 'var(--text-secondary)';
+    } else if (mod.state?.hotkey_registered) {
+      status.textContent = '热键已注册';
+      status.style.color = 'var(--accent-green)';
+    } else {
+      status.textContent = '热键不可用 / 被占用';
+      status.style.color = 'var(--accent-red)';
+    }
+  }
+}
+
+function renderSettingsPage(data) {
+  const settings = data.global_settings || {};
+  const startup = document.getElementById('toggle-startup');
+  const closeTray = document.getElementById('toggle-close-tray');
+  if (startup) startup.checked = !!settings.run_on_startup;
+  if (closeTray) closeTray.checked = settings.close_to_tray !== false;
 }
 
 // Event Listeners
@@ -290,53 +289,74 @@ document.getElementById('btn-diagnose-usb')?.addEventListener('click', async () 
   }
 });
 
-// Fences Event Listeners
-document.getElementById('toggle-fences')?.addEventListener('change', async (e) => {
-  await apiCall('/api/toggle_module', 'POST', { module_id: 'desktop_fences', enabled: e.target.checked });
-  await refreshDashboard();
-});
 
-document.getElementById('btn-open-create-fence')?.addEventListener('click', () => {
-  const card = document.getElementById('create-fence-card');
-  if (card) card.style.display = 'block';
-});
+// Module on/off switches
+function bindModuleToggle(elementId, moduleId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.addEventListener('change', async () => {
+    const desired = el.checked;
+    el.disabled = true;
+    const res = await apiCall('/api/toggle_module', 'POST', {
+      module_id: moduleId,
+      enabled: desired
+    });
+    el.disabled = false;
+    if (!res || res.status !== 'ok') {
+      el.checked = !desired;
+      alert('模块切换失败，请查看日志。');
+    }
+    await refreshDashboard();
+  });
+}
 
-document.getElementById('btn-cancel-create-fence')?.addEventListener('click', () => {
-  const card = document.getElementById('create-fence-card');
-  if (card) card.style.display = 'none';
-});
+bindModuleToggle('toggle-battery', 'omni_battery');
+bindModuleToggle('toggle-awake', 'awake');
+bindModuleToggle('toggle-pinner', 'window_pinner');
+bindModuleToggle('toggle-power-rename', 'power_rename');
 
-document.getElementById('btn-confirm-create-fence')?.addEventListener('click', async () => {
-  const title = document.getElementById('new-fence-title').value.trim();
-  if (!title) {
-    alert('请输入栅栏名称！');
-    return;
-  }
-  const folder = document.getElementById('new-fence-folder').value.trim();
+document.getElementById('toggle-awake-screen')?.addEventListener('change', async (e) => {
   await apiCall('/api/action', 'POST', {
-    module_id: 'desktop_fences',
-    action: 'create_fence',
-    payload: { title, folder_path: folder }
+    module_id: 'awake',
+    action: 'update_settings',
+    payload: { keep_screen_on: e.target.checked }
   });
-  document.getElementById('create-fence-card').style.display = 'none';
-  document.getElementById('new-fence-title').value = '';
-  document.getElementById('new-fence-folder').value = '';
   await refreshDashboard();
 });
 
-document.getElementById('btn-toggle-all-fences')?.addEventListener('click', async () => {
-  const res = await apiCall('/api/action', 'POST', {
-    module_id: 'desktop_fences',
-    action: 'toggle_all_visibility',
-    payload: {}
+document.getElementById('select-battery-interval')?.addEventListener('change', async (e) => {
+  await apiCall('/api/action', 'POST', {
+    module_id: 'omni_battery',
+    action: 'update_settings',
+    payload: { poll_interval: parseInt(e.target.value, 10) }
   });
-  const isHidden = res?.is_all_hidden;
-  document.getElementById('btn-toggle-all-fences').textContent = isHidden ? '👁️ 恢复显示全部栅栏' : '👁️ 临时隐藏全部栅栏';
+  await refreshDashboard();
 });
 
-document.getElementById('toggle-awake')?.addEventListener('change', async (e) => {
-  await apiCall('/api/action', 'POST', { module_id: 'awake', action: 'toggle_active', payload: {} });
+document.getElementById('select-battery-alert')?.addEventListener('change', async (e) => {
+  await apiCall('/api/action', 'POST', {
+    module_id: 'omni_battery',
+    action: 'update_settings',
+    payload: { alert_threshold: parseInt(e.target.value, 10) }
+  });
   await refreshDashboard();
+});
+
+async function setGlobalSetting(key, value, revertElement) {
+  const res = await apiCall('/api/global', 'POST', { key, value });
+  if (!res || res.status !== 'ok') {
+    if (revertElement) revertElement.checked = !value;
+    alert(res?.message || '设置失败。');
+  }
+  await refreshDashboard();
+}
+
+document.getElementById('toggle-startup')?.addEventListener('change', async (e) => {
+  await setGlobalSetting('run_on_startup', e.target.checked, e.target);
+});
+
+document.getElementById('toggle-close-tray')?.addEventListener('change', async (e) => {
+  await setGlobalSetting('close_to_tray', e.target.checked, e.target);
 });
 
 document.getElementById('btn-test-pin')?.addEventListener('click', async () => {
@@ -461,18 +481,25 @@ function renderRenameTable(previewItems) {
 
   previewItems.forEach((item, index) => {
     const isChanged = item.changed;
-    if (isChanged) willChangeCount++;
+    const isValid = item.valid !== false;
+    if (isChanged && isValid) willChangeCount++;
 
-    const statusTag = isChanged 
-      ? '<span class="tag tag-charging" style="color: #38d39f; background: rgba(56, 211, 159, 0.15)">准备就绪</span>'
-      : '<span class="tag">未变更</span>';
+    let statusTag;
+    if (!isValid) {
+      statusTag = '<span class="tag" style="color: var(--accent-red)">名称非法</span>';
+    } else if (isChanged) {
+      statusTag = '<span class="tag tag-charging" style="color: #38d39f; background: rgba(56, 211, 159, 0.15)">准备就绪</span>';
+    } else {
+      statusTag = '<span class="tag">未变更</span>';
+    }
 
     const newNameClass = isChanged ? 'diff-changed' : 'diff-same';
 
     html += `
       <tr>
         <td style="text-align: center;">
-          <input type="checkbox" class="rename-item-chk" data-idx="${index}" ${item.selected ? 'checked' : ''}>
+          <input type="checkbox" class="rename-item-chk" data-idx="${index}"
+                 ${item.selected ? 'checked' : ''} ${isValid ? '' : 'disabled'}>
         </td>
         <td style="color: var(--text-secondary)">${escapeHtml(item.original_name)}</td>
         <td class="${newNameClass}">${escapeHtml(item.new_name)}</td>
@@ -500,19 +527,31 @@ function renderRenameTable(previewItems) {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // Select all toggle
 document.getElementById('rename-select-all')?.addEventListener('change', (e) => {
   const checked = e.target.checked;
-  renameCurrentPreview.forEach(p => p.selected = checked);
-  document.querySelectorAll('.rename-item-chk').forEach(c => c.checked = checked);
+  renameCurrentPreview.forEach(p => {
+    p.selected = checked && p.changed && p.valid !== false;
+  });
+  document.querySelectorAll('.rename-item-chk').forEach(c => {
+    const idx = parseInt(c.getAttribute('data-idx'));
+    const item = renameCurrentPreview[idx];
+    c.checked = !!(item && item.selected);
+  });
 });
 
 // Execute Rename
 document.getElementById('btn-rename-apply')?.addEventListener('click', async () => {
-  const selectedTasks = renameCurrentPreview.filter(p => p.selected && p.changed);
+  const selectedTasks = renameCurrentPreview.filter(
+    p => p.selected && p.changed && p.valid !== false
+  );
   if (selectedTasks.length === 0) {
     alert('没有选中的待重命名文件！');
     return;
@@ -533,7 +572,10 @@ document.getElementById('btn-rename-apply')?.addEventListener('click', async () 
   });
 
   if (res && (res.status === 'ok' || res.status === 'partial')) {
-    alert(`重命名完成！成功重命名 ${res.success_count} 个文件。`);
+    const errorText = res.errors && res.errors.length
+      ? `\n\n${res.errors.length} 个失败:\n${res.errors.slice(0, 5).join('\n')}`
+      : '';
+    alert(`重命名完成！成功 ${res.success_count} 个文件。${errorText}`);
     const undoBtn = document.getElementById('btn-rename-undo');
     if (undoBtn) undoBtn.disabled = !res.undo_available;
     // Reload directory
@@ -554,8 +596,11 @@ document.getElementById('btn-rename-undo')?.addEventListener('click', async () =
     payload: {}
   });
 
-  if (res && res.status === 'ok') {
-    alert(`成功撤销 ${res.reverted_count} 个文件的更名！`);
+  if (res && (res.status === 'ok' || res.status === 'partial')) {
+    const errorText = res.errors && res.errors.length
+      ? `\n${res.errors.length} 个失败`
+      : '';
+    alert(`成功撤销 ${res.reverted_count} 个文件的更名！${errorText}`);
     const undoBtn = document.getElementById('btn-rename-undo');
     if (undoBtn) undoBtn.disabled = !res.undo_available;
     // Reload directory
